@@ -2,6 +2,7 @@
 #include "CTimer.h"
 #include "CHud.h"
 #include "CMessages.h"
+#include "CCamera.h"
 #include "fmod.hpp"
 #include "fmod_studio.hpp"
 
@@ -14,11 +15,11 @@ public:
     static FMOD::Studio::System* system;
     static FMOD_STUDIO_PARAMETER_DESCRIPTION rpmDesc;
     static FMOD_STUDIO_PARAMETER_DESCRIPTION loadDesc;
+    static FMOD_3D_ATTRIBUTES attributes;
 
     static void UpdateFmod() {
         if (system != NULL)
         {
-            CheckError(system->update(), "Update Failed");
         }
     }
     /*static void ProcessKey() {
@@ -44,6 +45,11 @@ public:
         void* extraDriverData = NULL;
         CheckError(FMOD::Studio::System::create(&system), "Failed on create FMOD System");
 
+        // The example Studio project is authored for 5.1 sound, so set up the system output mode to match
+        FMOD::System* coreSystem = NULL;
+        CheckError(system->getCoreSystem(&coreSystem), "Failed on create FMOD CORE System");
+        CheckError(coreSystem->setSoftwareFormat(0, FMOD_SPEAKERMODE_5POINT1, 0), "Failed on set software format");
+
         CheckError(system->initialize(1024, FMOD_STUDIO_INIT_NORMAL, FMOD_INIT_NORMAL, extraDriverData), "Failed to initialize");
 
         FMOD::Studio::Bank* masterBank = NULL;
@@ -55,6 +61,11 @@ public:
         FMOD::Studio::Bank* vehiclesBank = NULL;
         CheckError(system->loadBankFile(GAME_PATH((char*)"banks\\Vehicles.bank"), FMOD_STUDIO_LOAD_BANK_NORMAL, &vehiclesBank), "Failed on load bank SFX");
 
+        attributes = { { 0 } };
+        attributes.forward.z = 1.0f;
+        attributes.up.y = 1.0f;
+        CheckError(system->setListenerAttributes(0, &attributes), "Failed on set 3d ambient");
+
         FMOD::Studio::EventDescription* eventDescription = NULL;
         CheckError(system->getEvent("event:/Vehicles/Car Engine", &eventDescription), "Failed on get event");
         //CheckError(system->getEvent("event:/Vehicles/Ride-on Mower", &eventDescription), "Failed on get event");
@@ -65,6 +76,7 @@ public:
         eventInstance = NULL;
         CheckError(eventDescription->createInstance(&eventInstance), "Failed on create instance");
 
+        eventInstance->set3DAttributes(&attributes);
         eventInstance->setVolume(.5f);
         eventInstance->setParameterByID(rpmDesc.id, 0.0f);
         eventInstance->setParameterByID(loadDesc.id, 1.0f);
@@ -104,17 +116,32 @@ public:
     static int gear;
     static int targetGear;
 
+    static bool bPlaying;
+
     GTAFmod() {
 
         Events::gameProcessEvent.Add(UpdateFmod);
         Events::initGameEvent.after.Add(InitializeFmod);
         Events::gameProcessEvent.before += [](){
             CVehicle* vehicle = FindPlayerVehicle(-1, true);
-
             if (vehicle && vehicle->m_nVehicleSubClass != VEHICLE_PLANE && vehicle->m_nVehicleSubClass != VEHICLE_HELI
                 && vehicle->m_nVehicleSubClass != VEHICLE_BOAT && vehicle->m_nVehicleSubClass != VEHICLE_BMX &&
-                vehicle->m_nVehicleSubClass != VEHICLE_TRAIN)
+                vehicle->m_nVehicleSubClass != VEHICLE_TRAIN && CTimer::m_UserPause == false)
             {
+                if (bPlaying == false)
+                {
+                    eventInstance->start();
+                    bPlaying = true;
+                }
+                CVector camPos = TheCamera.GetPosition();
+                CVector vehiclePos = vehicle->GetPosition();
+
+                attributes.position.x = vehiclePos.x - camPos.x;
+                attributes.position.y = vehiclePos.y - camPos.y;
+                attributes.position.z = vehiclePos.z - camPos.z;
+                eventInstance->set3DAttributes(&attributes);
+                CMessages::AddMessageJumpQWithNumber(new char[] {"x ~1~ y ~1~ z ~1~"}, 3000, 0, attributes.position.x, attributes.position.y, attributes.position.z, 0, 0, 0, false);
+
                 float gasPedal = vehicle->m_fGasPedal;
                 if (CTimer::m_snTimeInMilliseconds < (m_nLastGearChangeTime + 800))
                 {
@@ -214,15 +241,26 @@ public:
                     {
                         PrevGear();
                     }
-                    if (gasPedal == 0 && rpm > 2000)
+                    if (gasPedal == 0 && rpm > 3000)
                     {
                         PrevGear();
                     }
                 }
-                CMessages::AddMessageJumpQWithNumber(new char[] {"RPM ~1~ GEAR ~1~ SPEED ~1~ CLUTCH ~1~ GAS ~1~"}, 3000, 0, rpm, targetGear, speed, clutch, gasPedal, 0, false);
+                //CMessages::AddMessageJumpQWithNumber(new char[] {"RPM ~1~ GEAR ~1~ SPEED ~1~ CLUTCH ~1~ GAS ~1~"}, 3000, 0, rpm, targetGear, speed, clutch, gasPedal, 0, false);
 
                 eventInstance->setParameterByID(rpmDesc.id, rpm);
                 eventInstance->setParameterByID(loadDesc.id, -1 + (gasPedal * 2));
+
+                CheckError(system->update(), "Update Failed");
+            }
+            else
+            {
+                if (bPlaying == true)
+                {
+                    eventInstance->stop(FMOD_STUDIO_STOP_IMMEDIATE);
+                    CheckError(system->update(), "Update Failed");
+                    bPlaying = false;
+                }
             }
         };
     }
@@ -231,11 +269,13 @@ FMOD::Studio::EventInstance* GTAFmod::eventInstance = NULL;
 FMOD::Studio::System* GTAFmod::system = NULL;
 FMOD_STUDIO_PARAMETER_DESCRIPTION GTAFmod::rpmDesc;
 FMOD_STUDIO_PARAMETER_DESCRIPTION GTAFmod::loadDesc; 
+FMOD_3D_ATTRIBUTES GTAFmod::attributes;
 
 int GTAFmod::gear = 1;
 int GTAFmod::targetGear = 1;
 float GTAFmod::rpm = 850;
 float GTAFmod::clutch = 1;
+bool GTAFmod::bPlaying;
 unsigned int GTAFmod::m_nLastGearChangeTime = 0;
 unsigned int GTAFmod::m_nLastSpawnedTime = 0;
 unsigned int GTAFmod::automatic = 1;
