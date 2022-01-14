@@ -72,8 +72,33 @@ public:
 
         CHud::SetHelpMessage(rpmDesc.name, true, false, false);
     }
+    static void PrevGear()
+    {
+        targetGear -= 1;
+        if (targetGear < 1)
+            targetGear = 1;
+
+        if (gear != targetGear)
+        {
+            m_nLastGearChangeTime = CTimer::m_snTimeInMilliseconds;
+            clutch = 1;
+        }
+    }
+    static void NextGear()
+    {
+        targetGear += 1;
+        if (targetGear > 5)
+            targetGear = 5;
+
+        if (gear != targetGear)
+        {
+            m_nLastGearChangeTime = CTimer::m_snTimeInMilliseconds;
+            clutch = 1;
+        }
+    }
 
     static unsigned int m_nLastGearChangeTime;
+    static unsigned int automatic;
     static float clutch;
     static float rpm;
     static int gear;
@@ -138,7 +163,7 @@ public:
                 {
                     if (rpm < targetRpm)
                     {
-                        rpm += (gasPedal * CTimer::ms_fTimeStep) * 100;
+                        rpm += (CTimer::ms_fTimeStep) * 50;
                         if (rpm > 9500)
                         {
                             CHud::SetHelpMessage("CABUM MOTOR", true, false, false);
@@ -146,7 +171,7 @@ public:
                     }
                     else
                     {
-                        rpm -= (CTimer::ms_fTimeStep) * 120;
+                        rpm -= (CTimer::ms_fTimeStep) * 50;
                     }
                 }
 
@@ -159,29 +184,42 @@ public:
                 }
                 if (KeyPressed(VK_SHIFT) && CTimer::m_snTimeInMilliseconds > (m_nLastGearChangeTime + 200))
                 {
-                    targetGear += 1;
-                    if (targetGear > 5)
-                        targetGear = 5;
-
-                    if (gear != targetGear)
+                    NextGear();
+                }
+                if (KeyPressed(VK_F6) && CTimer::m_snTimeInMilliseconds > (m_nLastSpawnedTime + 200))
+                {
+                    if (automatic == 0)
                     {
-                        m_nLastGearChangeTime = CTimer::m_snTimeInMilliseconds;
-                        clutch = 1;
+                        automatic = 1;
+                        CHud::SetHelpMessage("Automatic: ON", true, false, false);
                     }
+                    else
+                    {
+                        automatic = 0;
+                        CHud::SetHelpMessage("Automatic: OFF", true, false, false);
+                    }
+                    m_nLastSpawnedTime = CTimer::m_snTimeInMilliseconds;
                 }
                 if (KeyPressed(VK_CONTROL) && CTimer::m_snTimeInMilliseconds > (m_nLastGearChangeTime + 200))
                 {
-                    targetGear -= 1;
-                    if (targetGear < 1)
-                        targetGear = 1;
-
-                    if (gear != targetGear)
+                    PrevGear();
+                }
+                if (automatic == 1 && CTimer::m_snTimeInMilliseconds > (m_nLastGearChangeTime + 1500))
+                {
+                    if (gasPedal > 0 && rpm > 6000)
                     {
-                        m_nLastGearChangeTime = CTimer::m_snTimeInMilliseconds;
-                        clutch = 1;
+                        NextGear();
+                    }
+                    if (gasPedal > 0 && rpm < 1000)
+                    {
+                        PrevGear();
+                    }
+                    if (gasPedal == 0 && rpm > 2000)
+                    {
+                        PrevGear();
                     }
                 }
-                CMessages::AddMessageJumpQWithNumber(new char[] {"RPM ~1~ GEAR ~1~ SPEED ~1~ CLUTCH ~1~ GAS ~1~"}, 3000, 0, rpm, targetGear, clutch, speed, gasPedal, 0, false);
+                CMessages::AddMessageJumpQWithNumber(new char[] {"RPM ~1~ GEAR ~1~ SPEED ~1~ CLUTCH ~1~ GAS ~1~"}, 3000, 0, rpm, targetGear, speed, clutch, gasPedal, 0, false);
 
                 eventInstance->setParameterByID(rpmDesc.id, rpm);
                 eventInstance->setParameterByID(loadDesc.id, -1 + (gasPedal * 2));
@@ -189,7 +227,6 @@ public:
         };
     }
 } gTAFmod;
-unsigned int GTAFmod::m_nLastSpawnedTime = 0;
 FMOD::Studio::EventInstance* GTAFmod::eventInstance = NULL;
 FMOD::Studio::System* GTAFmod::system = NULL;
 FMOD_STUDIO_PARAMETER_DESCRIPTION GTAFmod::rpmDesc;
@@ -200,3 +237,5 @@ int GTAFmod::targetGear = 1;
 float GTAFmod::rpm = 850;
 float GTAFmod::clutch = 1;
 unsigned int GTAFmod::m_nLastGearChangeTime = 0;
+unsigned int GTAFmod::m_nLastSpawnedTime = 0;
+unsigned int GTAFmod::automatic = 1;
