@@ -2,5 +2,9 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="GTAFmod.cpp" />
+    <ClCompile Include="Curve.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Curve.h" />
   </ItemGroup>
 </Project>

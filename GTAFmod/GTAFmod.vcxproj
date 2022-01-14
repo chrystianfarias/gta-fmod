@@ -42,7 +42,7 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='GTASA Release|Win32'">
-    <OutDir>$(GTA_SA_DIR)\scripts\</OutDir>
+    <OutDir>$(GTA_SA_DIR)\modloader\GTAFmod</OutDir>
     <IntDir>$(ProjectDir).obj\GTASA\Release\</IntDir>
     <TargetName>GTAFmod.SA</TargetName>
     <TargetExt>.asi</TargetExt>
@@ -94,7 +94,11 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Curve.cpp" />
     <ClCompile Include="GTAFmod.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Curve.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
