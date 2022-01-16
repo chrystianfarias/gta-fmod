@@ -152,7 +152,7 @@ public:
         //CTorqueCurve->Draw(CRect(100, 100, 500, 300), 2);
 
         lg.open("GTAFmod.log", std::fstream::out | std::fstream::trunc);
-        //Events::gameProcessEvent.Add(UpdateFmod);
+
         Events::initGameEvent.after.Add(InitializeFmod);
         Events::gameProcessEvent.before += [](){
             //CTorqueCurve->Render();
@@ -232,9 +232,9 @@ public:
                     if (fRPM < targetRpm)
                     {
                         fRPM += (CTimer::ms_fTimeStep) * 50;
-                        if (fRPM > torqueCurve.maxX)
+                        if (fRPM > torqueCurve.maxX + 400)
                         {
-                            vehicle->m_fHealth -= 50.0;
+                            vehicle->m_fHealth -= 80.0;
                         }
                     }
                     else
@@ -298,8 +298,7 @@ public:
                         PrevGear();
                     }
                 }
-                //CMessages::AddMessageJumpQWithNumber(new char[] {"TORQUE ~1~"}, 3000, 0, cv.Evaluate(fRPM) , nTargetGear, speed, fClutch, gasPedal, 0, false);
-                char sGear;
+               char sGear;
                 if (nGear > 0)
                 {
                     sGear = nGear;
@@ -320,14 +319,9 @@ public:
                     sGear = 'N';
                     torqueBias = 0;
                 }
-                //torqueBias *= relation[nGear];
-                //torqueBias = ((relation[nGear-1] - speed) / relation[nGear-1]);
-
                 vehicle->m_pHandlingData->m_transmissionData.m_fEngineAcceleration = (torqueBias * (1 - fClutch)) * gasPedal * (vehicle->m_fHealth / 1000);
-                //vehicle->m_pHandlingData->m_fTractionMultiplier = torqueBias > 0.1 ? 0.5 : 1;
-                
-
-                CMessages::AddMessageJumpQWithNumber(new char[] {"fRPM ~1~ sGear ~1~ TRPM ~1~"}, 3000, 0, fRPM, sGear, torqueBias * 1000, 0, 0, 0, false);
+               
+                CMessages::AddMessageJumpQWithNumber(new char[] {"RPM ~1~ Gear ~1~"}, 3000, 0, fRPM, sGear, torqueBias * 1000, 0, 0, 0, false);
 
                 float soundRpm = fRPM;
                 if (soundRpm < 800)
