@@ -37,13 +37,6 @@ bool engineState = true;
 static bool bPlaying;
 class GTAFmod {
 public:
-
-    static void UpdateFmod() {
-        if (KeyPressed(VK_F8) && CTimer::m_snTimeInMilliseconds > (m_nLastSpawnedTime + 200))
-        {
-            InitializeFmod();
-        }
-    }
     static void CheckError(FMOD_RESULT result, const char* text)
     {
         if (result != FMOD_OK && CTimer::m_snTimeInMilliseconds > (m_nLastSpawnedTime + 1000))
@@ -63,7 +56,7 @@ public:
         void* extraDriverData = NULL;
         CheckError(FMOD::Studio::System::create(&fmodSystem), "Failed on create FMOD System");
 
-        // The example Studio project is authored for 5.1 sound, so set up the system output mode to match
+        //Initialize Core System
         FMOD::System* coreSystem = NULL;
         CheckError(fmodSystem->getCoreSystem(&coreSystem), "Failed on create FMOD CORE System");
         CheckError(coreSystem->setSoftwareFormat(0, FMOD_SPEAKERMODE_5POINT1, 0), "Failed on set software format");
@@ -72,6 +65,7 @@ public:
 
         CheckError(fmodSystem->initialize(1024, FMOD_STUDIO_INIT_NORMAL, FMOD_INIT_NORMAL, extraDriverData), "Failed to initialize");
 
+        //Load banks
         FMOD::Studio::Bank* masterBank = NULL;
         CheckError(fmodSystem->loadBankFile(GAME_PATH((char*)"modloader\\GTAFmod\\banks\\common.bank"), FMOD_STUDIO_LOAD_BANK_NORMAL, &masterBank), "Failed on load bank Master");
 
@@ -96,27 +90,28 @@ public:
         FMOD::Studio::EventDescription* gearEventDescription = NULL;
         CheckError(fmodSystem->getEvent("event:/cars/ks_toyota_ae86/gear_ext", &gearEventDescription), "Failed on get event");
 
+        //Get parameters
         CheckError(rpmEventDescription->getParameterDescriptionByName("rpms", &rpmDesc), "Failed on get parameter");
         CheckError(rpmEventDescription->getParameterDescriptionByName("throttle", &loadDesc), "Failed on get parameter");
         
+        //RPM Instance
         rpmEventInstance = NULL;
         CheckError(rpmEventDescription->createInstance(&rpmEventInstance), "Failed on create instance");
 
+        //Backfire Instance
         backFireEventInstance = NULL;
         CheckError(backFireEventDescription->createInstance(&backFireEventInstance), "Failed on create instance");
 
+        //Gear Change Instance
         gearEventInstance = NULL;
         CheckError(gearEventDescription->createInstance(&gearEventInstance), "Failed on create instance");
 
-        lg << "8";
-        lg.flush();
-
+        //Set 3D space
         rpmEventInstance->set3DAttributes(&attributes);
         rpmEventInstance->setVolume(.5f);
         rpmEventInstance->setParameterByID(rpmDesc.id, 0.0f);
         rpmEventInstance->setParameterByID(loadDesc.id, 1.0f);
         rpmEventInstance->start();
-        CHud::SetHelpMessage(rpmDesc.name, true, false, false);
     }
     static void PrevGear()
     {
@@ -149,29 +144,32 @@ public:
     }
 
     GTAFmod() {
-        //CTorqueCurve->Draw(CRect(100, 100, 500, 300), 2);
-
-        lg.open("GTAFmod.log", std::fstream::out | std::fstream::trunc);
-
+        //Initialize FMOD on game start
         Events::initGameEvent.after.Add(InitializeFmod);
+
+        //Update FMOD
         Events::gameProcessEvent.before += [](){
-            //CTorqueCurve->Render();
+            //Torque Curve
             CVector2D points[] = {
                 CVector2D(0, 0.8),
                 CVector2D(4500, 1.2),
                 CVector2D(8000, 0.1)
             };
             Curve torqueCurve = Curve(points);
+
+            //Find Vehicle
             CVehicle* vehicle = FindPlayerVehicle(-1, true);
             if (vehicle && vehicle->m_nVehicleSubClass != VEHICLE_PLANE && vehicle->m_nVehicleSubClass != VEHICLE_HELI
                 && vehicle->m_nVehicleSubClass != VEHICLE_BOAT && vehicle->m_nVehicleSubClass != VEHICLE_BMX &&
                 vehicle->m_nVehicleSubClass != VEHICLE_TRAIN && CTimer::m_UserPause == false)
             {
+                //Check if sound is playing
                 if (bPlaying == false)
                 {
                     rpmEventInstance->start();
                     bPlaying = true;
                 }
+                //Set 3D space position
                 CVector camPos = TheCamera.GetPosition();
                 CVector vehiclePos = vehicle->GetPosition();
 
@@ -182,7 +180,10 @@ public:
                 backFireEventInstance->set3DAttributes(&attributes);
                 gearEventInstance->set3DAttributes(&attributes);
 
+                //Get gas pedal
                 float gasPedal = vehicle->m_fGasPedal;
+
+                //Gear change time
                 if (CTimer::m_snTimeInMilliseconds < (nLastGearChangeTime + 800))
                 {
                     gasPedal = 0;
@@ -197,21 +198,27 @@ public:
                     fClutch = 0;
                     gasPedal = vehicle->m_fGasPedal;
                 }
+                //Clutch Key
                 if (KeyPressed(VK_F7))
                 {
                     fClutch = 1;
                 }
 
+                //Remove Vehicle default Sound
                 vehicle->m_vehicleAudio.m_nEngineState = -1;
 
+                //Gear relation
                 float relation[] = {
                     -3, 0, 3, 2, 1.6, 1.2, 0.9, 0.7
                 };
 
-                float torqueBias = 0;
+                //Calculate Speed
                 float speed = vehicle->m_vecMoveSpeed.Magnitude() * 175;
+
+                //Calculate target RPM
                 float targetRpm = 400 + (vehicle->m_vecMoveSpeed.Magnitude() * abs(relation[nGear + 1])) * 6000;
 
+                //If Neutral (0) is equals clutch
                 if (nGear == 0)
                     fClutch = 1;
 
@@ -242,15 +249,23 @@ public:
                         fRPM -= (CTimer::ms_fTimeStep) * 20;
                     }
                 }
+                //Engine off if RPM is less than 300
                 if (fRPM < 300 && fClutch == 0 && engineState == true)
                 {
                     TurnEngine(vehicle, false);
                     CHud::SetHelpMessage("Engine OFF", true, false, false);
                 }
+                //Next Gear Key
                 if (KeyPressed(VK_SHIFT) && CTimer::m_snTimeInMilliseconds > (nLastGearChangeTime + 200))
                 {
                     NextGear();
                 }
+                //Prev Gear
+                if (KeyPressed(VK_CONTROL) && CTimer::m_snTimeInMilliseconds > (nLastGearChangeTime + 200))
+                {
+                    PrevGear();
+                }
+                //Engine on/off Key
                 if (KeyPressed(VK_F8) && CTimer::m_snTimeInMilliseconds > (m_nLastSpawnedTime + 2000))
                 {
                     if (engineState == false)
@@ -265,6 +280,7 @@ public:
                     }
                     m_nLastSpawnedTime = CTimer::m_snTimeInMilliseconds;
                 }
+                //Automatic gearbox on/off Key
                 if (KeyPressed(VK_F6) && CTimer::m_snTimeInMilliseconds > (m_nLastSpawnedTime + 200))
                 {
                     if (bAutomatic == 0)
@@ -279,10 +295,7 @@ public:
                     }
                     m_nLastSpawnedTime = CTimer::m_snTimeInMilliseconds;
                 }
-                if (KeyPressed(VK_CONTROL) && CTimer::m_snTimeInMilliseconds > (nLastGearChangeTime + 200))
-                {
-                    PrevGear();
-                }
+                //Automatic Gearbox 
                 if (bAutomatic == 1 && CTimer::m_snTimeInMilliseconds > (nLastGearChangeTime + 1500) && fClutch == 0)
                 {
                     if (gasPedal > 0 && fRPM > 5500)
@@ -298,13 +311,14 @@ public:
                         PrevGear();
                     }
                 }
-               char sGear;
+                char sGear;
                 if (nGear > 0)
                 {
                     sGear = nGear;
                 }
 
-                torqueBias = torqueCurve.Evaluate(fRPM) * 0.002;
+                //Evaluate Torque Curve
+                float torqueBias = torqueCurve.Evaluate(fRPM) * 0.002;
                 if (fRPM > torqueCurve.maxX)
                 {
                     torqueBias = -0.1 * (fRPM / 8000);
@@ -319,10 +333,13 @@ public:
                     sGear = 'N';
                     torqueBias = 0;
                 }
+                //Set engine acceleration
                 vehicle->m_pHandlingData->m_transmissionData.m_fEngineAcceleration = (torqueBias * (1 - fClutch)) * gasPedal * (vehicle->m_fHealth / 1000);
                
-                CMessages::AddMessageJumpQWithNumber(new char[] {"RPM ~1~ Gear ~1~"}, 3000, 0, fRPM, sGear, torqueBias * 1000, 0, 0, 0, false);
+                //Debug variables
+                //CMessages::AddMessageJumpQWithNumber(new char[] {"RPM ~1~ Gear ~1~"}, 3000, 0, fRPM, sGear, torqueBias * 1000, 0, 0, 0, false);
 
+                //Clamp RPM sound
                 float soundRpm = fRPM;
                 if (soundRpm < 800)
                 {
@@ -335,11 +352,14 @@ public:
                 if (engineState == false)
                     soundRpm = 0;
 
+                //Set FMOD parameters
                 rpmEventInstance->setParameterByID(rpmDesc.id, soundRpm);
                 rpmEventInstance->setParameterByID(loadDesc.id, -1 + (gasPedal * 2));
 
+                //Update FMOD
                 CheckError(fmodSystem->update(), "Update Failed");
 
+                //Backfire event
                 if (gasPedal != fLastPedal)
                 {
                     if (gasPedal == 0)
@@ -355,6 +375,7 @@ public:
             }
             else
             {
+                //Stop FMOD when exiting the vehicle
                 if (bPlaying == true)
                 {
                     rpmEventInstance->stop(FMOD_STUDIO_STOP_IMMEDIATE);
