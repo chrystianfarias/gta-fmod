@@ -24,14 +24,15 @@ FMOD_STUDIO_PARAMETER_DESCRIPTION rpmDesc;
 FMOD_STUDIO_PARAMETER_DESCRIPTION loadDesc;
 FMOD_3D_ATTRIBUTES attributes;
 
-unsigned int m_nLastGearChangeTime = 0;
-unsigned int automatic = 0;
-float clutch = 0;
-float rpm = 800;
-int gear = 1;
-int targetGear = 1;
+int nLastGearChangeTime = 0;
+unsigned int bAutomatic = 0;
+float fClutch = 0;
+float fRPM = 800;
+int nGear = 0;
+int nTargetGear = 1;
 std::fstream lg;
-float lastPedal = 0;
+float fLastPedal = 0;
+bool engineState = true;
 
 static bool bPlaying;
 class GTAFmod {
@@ -119,35 +120,48 @@ public:
     }
     static void PrevGear()
     {
-        targetGear -= 1;
-        if (targetGear < 1)
-            targetGear = 1;
+        nTargetGear -= 1;
+        if (nTargetGear < -1)
+            nTargetGear = -1;
 
-        if (gear != targetGear)
+        if (nGear != nTargetGear)
         {
-            m_nLastGearChangeTime = CTimer::m_snTimeInMilliseconds;
-            clutch = 1;
+            nLastGearChangeTime = CTimer::m_snTimeInMilliseconds;
+            fClutch = 1;
         }
+    }
+    static void TurnEngine(CVehicle* v, bool value)
+    {
+        engineState = value;
+        ((void(__thiscall*)(CVehicle*, bool))0x41BDD0)(v, value);
     }
     static void NextGear()
     {
-        targetGear += 1;
-        if (targetGear > 5)
-            targetGear = 5;
+        nTargetGear += 1;
+        if (nTargetGear > 5)
+            nTargetGear = 5;
 
-        if (gear != targetGear)
+        if (nGear != nTargetGear)
         {
-            m_nLastGearChangeTime = CTimer::m_snTimeInMilliseconds;
-            clutch = 1;
+            nLastGearChangeTime = CTimer::m_snTimeInMilliseconds;
+            fClutch = 1;
         }
     }
 
     GTAFmod() {
-        lg.open("GTAFmod.log", std::fstream::out | std::fstream::trunc);
+        //CTorqueCurve->Draw(CRect(100, 100, 500, 300), 2);
 
+        lg.open("GTAFmod.log", std::fstream::out | std::fstream::trunc);
         //Events::gameProcessEvent.Add(UpdateFmod);
         Events::initGameEvent.after.Add(InitializeFmod);
         Events::gameProcessEvent.before += [](){
+            //CTorqueCurve->Render();
+            CVector2D points[] = {
+                CVector2D(0, 0.8),
+                CVector2D(4500, 1.2),
+                CVector2D(8000, 0.1)
+            };
+            Curve torqueCurve = Curve(points);
             CVehicle* vehicle = FindPlayerVehicle(-1, true);
             if (vehicle && vehicle->m_nVehicleSubClass != VEHICLE_PLANE && vehicle->m_nVehicleSubClass != VEHICLE_HELI
                 && vehicle->m_nVehicleSubClass != VEHICLE_BOAT && vehicle->m_nVehicleSubClass != VEHICLE_BMX &&
@@ -167,142 +181,183 @@ public:
                 rpmEventInstance->set3DAttributes(&attributes);
                 backFireEventInstance->set3DAttributes(&attributes);
                 gearEventInstance->set3DAttributes(&attributes);
-                
+
                 float gasPedal = vehicle->m_fGasPedal;
-                if (CTimer::m_snTimeInMilliseconds < (m_nLastGearChangeTime + 800))
+                if (CTimer::m_snTimeInMilliseconds < (nLastGearChangeTime + 800))
                 {
                     gasPedal = 0;
                 }
-                if (CTimer::m_snTimeInMilliseconds >= (m_nLastGearChangeTime + 800))
+                if (CTimer::m_snTimeInMilliseconds >= (nLastGearChangeTime + 800))
                 {
-                    if (gear != targetGear)
+                    if (nGear != nTargetGear)
                     {
                         gearEventInstance->start();
                     }
-                    gear = targetGear;
-                    clutch = 0;
+                    nGear = nTargetGear;
+                    fClutch = 0;
                     gasPedal = vehicle->m_fGasPedal;
                 }
                 if (KeyPressed(VK_F7))
                 {
-                    clutch = 1;
+                    fClutch = 1;
                 }
 
                 vehicle->m_vehicleAudio.m_nEngineState = -1;
 
-                float torqueBias = 0;
-                float speed = vehicle->m_vecMoveSpeed.Magnitude() * 175;
-                float targetRpm = 850 + (vehicle->m_vecMoveSpeed.Magnitude() * 20000) / gear;
-
                 float relation[] = {
-                    60, 100, 140, 180, 200
+                    -3, 0, 3, 2, 1.6, 1.2, 0.9, 0.7
                 };
 
-                torqueBias = ((relation[gear-1] - speed) / relation[gear-1]) * ((rpm / 4000) / gear) * 0.02;
-                if (torqueBias <= 0)
-                {
-                    torqueBias = 0;
-                }
+                float torqueBias = 0;
+                float speed = vehicle->m_vecMoveSpeed.Magnitude() * 175;
+                float targetRpm = 400 + (vehicle->m_vecMoveSpeed.Magnitude() * abs(relation[nGear + 1])) * 6000;
 
-                if (clutch > 0)
+                if (nGear == 0)
+                    fClutch = 1;
+
+                if (fClutch > 0)
                 {
-                    rpm += (gasPedal * CTimer::ms_fTimeStep) * 200 * clutch;
-                    if (rpm > 8000)
+                    fRPM += (gasPedal * CTimer::ms_fTimeStep) * 200 * fClutch;
+                    if (fRPM > torqueCurve.maxX)
                     {
-                        rpm = 8000;
+                        fRPM = torqueCurve.maxX;
                     }
-                    if (gasPedal == 0)
+                    if (gasPedal == 0 && fRPM > 800)
                     {
-                        rpm -= (CTimer::ms_fTimeStep) * 50;
+                        fRPM -= (CTimer::ms_fTimeStep) * 20;
                     }
                 }
                 else
                 {
-                    if (rpm < targetRpm)
+                    if (fRPM < targetRpm)
                     {
-                        rpm += (CTimer::ms_fTimeStep) * 50;
-                        if (rpm > 9500)
+                        fRPM += (CTimer::ms_fTimeStep) * 50;
+                        if (fRPM > torqueCurve.maxX)
                         {
-                            CHud::SetHelpMessage("CABUM MOTOR", true, false, false);
+                            vehicle->m_fHealth -= 50.0;
                         }
                     }
                     else
                     {
-                        rpm -= (CTimer::ms_fTimeStep) * 50;
+                        fRPM -= (CTimer::ms_fTimeStep) * 20;
                     }
                 }
-
-                vehicle->m_pHandlingData->m_transmissionData.m_fEngineAcceleration = (torqueBias * (1 - clutch)) * gasPedal;
-                
-                if (rpm < 800)
+                if (fRPM < 300 && fClutch == 0 && engineState == true)
                 {
-                    rpm = 800;
+                    TurnEngine(vehicle, false);
+                    CHud::SetHelpMessage("Engine OFF", true, false, false);
                 }
-                if (KeyPressed(VK_SHIFT) && CTimer::m_snTimeInMilliseconds > (m_nLastGearChangeTime + 200))
+                if (KeyPressed(VK_SHIFT) && CTimer::m_snTimeInMilliseconds > (nLastGearChangeTime + 200))
                 {
                     NextGear();
                 }
+                if (KeyPressed(VK_F8) && CTimer::m_snTimeInMilliseconds > (m_nLastSpawnedTime + 2000))
+                {
+                    if (engineState == false)
+                    {
+                        TurnEngine(vehicle, true);
+                        CHud::SetHelpMessage("Engine: ON", true, false, false);
+                    }
+                    else
+                    {
+                        TurnEngine(vehicle, false);
+                        CHud::SetHelpMessage("Engine: OFF", true, false, false);
+                    }
+                    m_nLastSpawnedTime = CTimer::m_snTimeInMilliseconds;
+                }
                 if (KeyPressed(VK_F6) && CTimer::m_snTimeInMilliseconds > (m_nLastSpawnedTime + 200))
                 {
-                    if (automatic == 0)
+                    if (bAutomatic == 0)
                     {
-                        automatic = 1;
+                        bAutomatic = 1;
                         CHud::SetHelpMessage("Automatic: ON", true, false, false);
                     }
                     else
                     {
-                        automatic = 0;
+                        bAutomatic = 0;
                         CHud::SetHelpMessage("Automatic: OFF", true, false, false);
                     }
                     m_nLastSpawnedTime = CTimer::m_snTimeInMilliseconds;
                 }
-                if (KeyPressed(VK_CONTROL) && CTimer::m_snTimeInMilliseconds > (m_nLastGearChangeTime + 200))
+                if (KeyPressed(VK_CONTROL) && CTimer::m_snTimeInMilliseconds > (nLastGearChangeTime + 200))
                 {
                     PrevGear();
                 }
-                if (automatic == 1 && CTimer::m_snTimeInMilliseconds > (m_nLastGearChangeTime + 1500) && clutch == 0)
+                if (bAutomatic == 1 && CTimer::m_snTimeInMilliseconds > (nLastGearChangeTime + 1500) && fClutch == 0)
                 {
-                    if (gasPedal > 0 && rpm > 5500)
+                    if (gasPedal > 0 && fRPM > 5500)
                     {
                         NextGear();
                     }
-                    if (gasPedal > 0 && rpm < 1000)
+                    if (gasPedal > 0 && fRPM < 1000)
                     {
                         PrevGear();
                     }
-                    if (gasPedal == 0 && rpm > 3000)
+                    if (gasPedal == 0 && fRPM > 3000)
                     {
                         PrevGear();
                     }
                 }
-                /*CVector2D points[] = {
-                    CVector2D(0, 0),
-                    CVector2D(1000, 180),
-                    CVector2D(3500, 210),
-                    CVector2D(6000, 120),
-                };
-                Curve cv = Curve(points);
-                CMessages::AddMessageJumpQWithNumber(new char[] {"TORQUE ~1~"}, 3000, 0, cv.Evaluate(rpm) , targetGear, speed, clutch, gasPedal, 0, false);
-                */
-                CMessages::AddMessageJumpQWithNumber(new char[] {"RPM ~1~ GEAR ~1~"}, 3000, 0, rpm, targetGear, vehicle->m_pHandlingData->m_transmissionData.m_fEngineAcceleration * 1000, 0, 0, 0, false);
+                //CMessages::AddMessageJumpQWithNumber(new char[] {"TORQUE ~1~"}, 3000, 0, cv.Evaluate(fRPM) , nTargetGear, speed, fClutch, gasPedal, 0, false);
+                char sGear;
+                if (nGear > 0)
+                {
+                    sGear = nGear;
+                }
 
-                rpmEventInstance->setParameterByID(rpmDesc.id, rpm);
+                torqueBias = torqueCurve.Evaluate(fRPM) * 0.002;
+                if (fRPM > torqueCurve.maxX)
+                {
+                    torqueBias = -0.1 * (fRPM / 8000);
+                }
+                if (nGear == -1)
+                {
+                    sGear = 'R';
+                    torqueBias *= -1;
+                }
+                if (nGear == 0)
+                {
+                    sGear = 'N';
+                    torqueBias = 0;
+                }
+                //torqueBias *= relation[nGear];
+                //torqueBias = ((relation[nGear-1] - speed) / relation[nGear-1]);
+
+                vehicle->m_pHandlingData->m_transmissionData.m_fEngineAcceleration = (torqueBias * (1 - fClutch)) * gasPedal * (vehicle->m_fHealth / 1000);
+                //vehicle->m_pHandlingData->m_fTractionMultiplier = torqueBias > 0.1 ? 0.5 : 1;
+                
+
+                CMessages::AddMessageJumpQWithNumber(new char[] {"fRPM ~1~ sGear ~1~ TRPM ~1~"}, 3000, 0, fRPM, sGear, torqueBias * 1000, 0, 0, 0, false);
+
+                float soundRpm = fRPM;
+                if (soundRpm < 800)
+                {
+                    soundRpm = 800;
+                }
+                if (soundRpm > 9000)
+                {
+                    soundRpm = 9000;
+                }
+                if (engineState == false)
+                    soundRpm = 0;
+
+                rpmEventInstance->setParameterByID(rpmDesc.id, soundRpm);
                 rpmEventInstance->setParameterByID(loadDesc.id, -1 + (gasPedal * 2));
 
                 CheckError(fmodSystem->update(), "Update Failed");
 
-                if (gasPedal != lastPedal)
+                if (gasPedal != fLastPedal)
                 {
                     if (gasPedal == 0)
                     {
-                        if (rpm > 5000 && CTimer::m_snTimeInMilliseconds > (m_nLastSpawnedTime + 1000))
+                        if (fRPM > 5000 && CTimer::m_snTimeInMilliseconds > (m_nLastSpawnedTime + 1000))
                         {
                             backFireEventInstance->start();
                             m_nLastSpawnedTime = CTimer::m_snTimeInMilliseconds;
                         }
                     }
                 }
-                lastPedal = gasPedal;
+                fLastPedal = gasPedal;
             }
             else
             {
