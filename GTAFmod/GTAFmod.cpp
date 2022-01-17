@@ -118,14 +118,12 @@ public:
                 if (audio == NULL)
                 {
                     audio = audios[vehicle->m_nModelIndex];
-                }
-                else
-                {
                     lastId = vehicle->m_nModelIndex;
                 }
 
                 if (audio == NULL)
                 {
+                    lastId = vehicle->m_vehicleAudio.m_nEngineAccelerateSoundBankId;
                     std::string section = "Bank" + std::to_string(lastId);
                     std::string sectionId = "Id" + std::to_string(vehicle->m_nModelIndex);
                     CIniReader ini("banks\\banks.ini");
@@ -222,22 +220,22 @@ public:
                     if (fRPM < targetRpm)
                     {
                         fRPM += (CTimer::ms_fTimeStep) * 50;
-                        if (fRPM > torqueCurve.maxX + 400)
+                        if (fRPM > torqueCurve.maxX + 800)
                         {
                             vehicle->m_fHealth -= 80.0;
                         }
                     }
                     else
                     {
-                        fRPM -= (CTimer::ms_fTimeStep) * 20;
+                        fRPM -= (CTimer::ms_fTimeStep) * 60;
                     }
                 }
                 //Engine off if RPM is less than 300
-                if (fRPM < 300 && fClutch == 0 && engineState == true)
+                /*if (fRPM < 300 && fClutch == 0 && engineState == true)
                 {
                     TurnEngine(vehicle, false);
                     CHud::SetHelpMessage("Engine OFF", true, false, false);
-                }
+                }*/
                 //Next Gear Key
                 if (KeyPressed(VK_SHIFT) && CTimer::m_snTimeInMilliseconds > (nLastGearChangeTime + 200))
                 {
@@ -249,7 +247,7 @@ public:
                     PrevGear();
                 }
                 //Engine on/off Key
-                if (KeyPressed(VK_F8) && CTimer::m_snTimeInMilliseconds > (m_nLastSpawnedTime + 2000))
+                /*if (KeyPressed(VK_F8) && CTimer::m_snTimeInMilliseconds > (m_nLastSpawnedTime + 2000))
                 {
                     if (engineState == false)
                     {
@@ -262,7 +260,7 @@ public:
                         CHud::SetHelpMessage("Engine: OFF", true, false, false);
                     }
                     m_nLastSpawnedTime = CTimer::m_snTimeInMilliseconds;
-                }
+                }*/
                 //Automatic gearbox on/off Key
                 if (KeyPressed(VK_F6) && CTimer::m_snTimeInMilliseconds > (m_nLastSpawnedTime + 200))
                 {
@@ -370,3 +368,17 @@ public:
         };
     }
 } gTAFmod;
+
+//Exports
+extern "C" float __declspec(dllexport) Ext_GetCurrentRPM()
+{
+    return fRPM;
+}
+extern "C" float __declspec(dllexport) Ext_GetCurrentGear()
+{
+    return nGear;
+}
+extern "C" float __declspec(dllexport) Ext_GetClutchValue()
+{
+    return fClutch;
+}

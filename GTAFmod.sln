@@ -5,6 +5,8 @@ VisualStudioVersion = 16.0.32002.261
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "GTAFmod", "GTAFmod\GTAFmod.vcxproj", "{B212DDA4-2A8E-45B2-914D-7BEEB31D06B1}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "GTAFmodDashboard", "GTAFmodDashboard\GTAFmodDashboard.vcxproj", "{4926E4E0-6F51-4AB9-BC23-8FA6FA187EB3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		GTASA Release|x86 = GTASA Release|x86
@@ -15,6 +17,10 @@ Global
 		{B212DDA4-2A8E-45B2-914D-7BEEB31D06B1}.GTASA Release|x86.Build.0 = GTASA Release|Win32
 		{B212DDA4-2A8E-45B2-914D-7BEEB31D06B1}.GTASA zDebug|x86.ActiveCfg = GTASA zDebug|Win32
 		{B212DDA4-2A8E-45B2-914D-7BEEB31D06B1}.GTASA zDebug|x86.Build.0 = GTASA zDebug|Win32
+		{4926E4E0-6F51-4AB9-BC23-8FA6FA187EB3}.GTASA Release|x86.ActiveCfg = GTASA Release|Win32
+		{4926E4E0-6F51-4AB9-BC23-8FA6FA187EB3}.GTASA Release|x86.Build.0 = GTASA Release|Win32
+		{4926E4E0-6F51-4AB9-BC23-8FA6FA187EB3}.GTASA zDebug|x86.ActiveCfg = GTASA zDebug|Win32
+		{4926E4E0-6F51-4AB9-BC23-8FA6FA187EB3}.GTASA zDebug|x86.Build.0 = GTASA zDebug|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
