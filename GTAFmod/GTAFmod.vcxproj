@@ -95,10 +95,14 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Curve.cpp" />
+    <ClCompile Include="FMODAudio.cpp" />
     <ClCompile Include="GTAFmod.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Curve.h" />
+    <ClInclude Include="FMODAudio.h" />
+    <ClInclude Include="IniReader\IniReader.h" />
+    <ClInclude Include="IniReader\ini_parser.hpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

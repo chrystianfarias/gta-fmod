@@ -12,17 +12,14 @@
 #include <string>
 #include <iomanip>
 #include <sstream>
+#include "FMODAudio.h"
+#include "IniReader/IniReader.h"
 
 using namespace plugin;
 
 int m_nLastSpawnedTime;
-FMOD::Studio::EventInstance* rpmEventInstance = NULL;
-FMOD::Studio::EventInstance* backFireEventInstance = NULL;
-FMOD::Studio::EventInstance* gearEventInstance = NULL;
 FMOD::Studio::System* fmodSystem = NULL;
-FMOD_STUDIO_PARAMETER_DESCRIPTION rpmDesc;
-FMOD_STUDIO_PARAMETER_DESCRIPTION loadDesc;
-FMOD_3D_ATTRIBUTES attributes;
+FMODAudio* audios[20];
 
 int nLastGearChangeTime = 0;
 unsigned int bAutomatic = 0;
@@ -30,88 +27,32 @@ float fClutch = 0;
 float fRPM = 800;
 int nGear = 0;
 int nTargetGear = 1;
-std::fstream lg;
 float fLastPedal = 0;
 bool engineState = true;
+int lastId = -1;
 
-static bool bPlaying;
 class GTAFmod {
 public:
-    static void CheckError(FMOD_RESULT result, const char* text)
-    {
-        if (result != FMOD_OK && CTimer::m_snTimeInMilliseconds > (m_nLastSpawnedTime + 1000))
-        {
-            CHud::SetHelpMessage(text, true, false, false);
-            lg << "Error\n";
-            lg << FMOD_ErrorString(result);
-            lg << "\n";
-            lg << text;
-            lg << "\n---\n";
-            lg.flush();
-            m_nLastSpawnedTime = CTimer::m_snTimeInMilliseconds;
-        }
-    }
     static void InitializeFmod()
     {
         void* extraDriverData = NULL;
-        CheckError(FMOD::Studio::System::create(&fmodSystem), "Failed on create FMOD System");
+        FMODAudio::CheckError(FMOD::Studio::System::create(&fmodSystem), "Failed on create FMOD System");
 
         //Initialize Core System
         FMOD::System* coreSystem = NULL;
-        CheckError(fmodSystem->getCoreSystem(&coreSystem), "Failed on create FMOD CORE System");
-        CheckError(coreSystem->setSoftwareFormat(0, FMOD_SPEAKERMODE_5POINT1, 0), "Failed on set software format");
-        CheckError(coreSystem->setPluginPath(GAME_PATH((char*)"modloader\\GTAFmod\\plugins")), "Failed on set path");
-        CheckError(coreSystem->loadPlugin("fmod_distance_filterL.dll", 0, 0), "Failed on load plugin");
+        FMODAudio::CheckError(fmodSystem->getCoreSystem(&coreSystem), "Failed on create FMOD CORE System");
+        FMODAudio::CheckError(coreSystem->setSoftwareFormat(0, FMOD_SPEAKERMODE_5POINT1, 0), "Failed on set software format");
+        FMODAudio::CheckError(coreSystem->setPluginPath(GAME_PATH((char*)"modloader\\GTAFmod\\plugins")), "Failed on set path");
+        FMODAudio::CheckError(coreSystem->loadPlugin("fmod_distance_filterL.dll", 0, 0), "Failed on load plugin");
 
-        CheckError(fmodSystem->initialize(1024, FMOD_STUDIO_INIT_NORMAL, FMOD_INIT_NORMAL, extraDriverData), "Failed to initialize");
+        FMODAudio::CheckError(fmodSystem->initialize(1024, FMOD_STUDIO_INIT_NORMAL, FMOD_INIT_NORMAL, extraDriverData), "Failed to initialize");
 
         //Load banks
         FMOD::Studio::Bank* masterBank = NULL;
-        CheckError(fmodSystem->loadBankFile(GAME_PATH((char*)"modloader\\GTAFmod\\banks\\common.bank"), FMOD_STUDIO_LOAD_BANK_NORMAL, &masterBank), "Failed on load bank Master");
+        FMODAudio::CheckError(fmodSystem->loadBankFile(GAME_PATH((char*)"modloader\\GTAFmod\\banks\\common.bank"), FMOD_STUDIO_LOAD_BANK_NORMAL, &masterBank), "Failed on load bank Master");
 
         FMOD::Studio::Bank* stringsBank = NULL;
-        CheckError(fmodSystem->loadBankFile(GAME_PATH((char*)"modloader\\GTAFmod\\banks\\common.strings.bank"), FMOD_STUDIO_LOAD_BANK_NORMAL, &stringsBank), "Failed on load bank Master String");
-
-        FMOD::Studio::Bank* vehiclesBank = NULL;
-        CheckError(fmodSystem->loadBankFile(GAME_PATH((char*)"modloader\\GTAFmod\\banks\\ks_toyota_ae86.bank"), FMOD_STUDIO_LOAD_BANK_NORMAL, &vehiclesBank), "Failed on load bank SFX");
-
-        attributes = { { 0 } };
-        attributes.forward.z = 1.0f;
-        attributes.up.y = 1.0f;
-        CheckError(fmodSystem->setListenerAttributes(0, &attributes), "Failed on set 3d ambient");
-
-        //Load events
-        FMOD::Studio::EventDescription* rpmEventDescription = NULL;
-        CheckError(fmodSystem->getEvent("event:/cars/ks_toyota_ae86/engine_ext", &rpmEventDescription), "Failed on get event");
-
-        FMOD::Studio::EventDescription* backFireEventDescription = NULL;
-        CheckError(fmodSystem->getEvent("event:/cars/ks_toyota_ae86/backfire_int", &backFireEventDescription), "Failed on get event");
-
-        FMOD::Studio::EventDescription* gearEventDescription = NULL;
-        CheckError(fmodSystem->getEvent("event:/cars/ks_toyota_ae86/gear_ext", &gearEventDescription), "Failed on get event");
-
-        //Get parameters
-        CheckError(rpmEventDescription->getParameterDescriptionByName("rpms", &rpmDesc), "Failed on get parameter");
-        CheckError(rpmEventDescription->getParameterDescriptionByName("throttle", &loadDesc), "Failed on get parameter");
-        
-        //RPM Instance
-        rpmEventInstance = NULL;
-        CheckError(rpmEventDescription->createInstance(&rpmEventInstance), "Failed on create instance");
-
-        //Backfire Instance
-        backFireEventInstance = NULL;
-        CheckError(backFireEventDescription->createInstance(&backFireEventInstance), "Failed on create instance");
-
-        //Gear Change Instance
-        gearEventInstance = NULL;
-        CheckError(gearEventDescription->createInstance(&gearEventInstance), "Failed on create instance");
-
-        //Set 3D space
-        rpmEventInstance->set3DAttributes(&attributes);
-        rpmEventInstance->setVolume(.5f);
-        rpmEventInstance->setParameterByID(rpmDesc.id, 0.0f);
-        rpmEventInstance->setParameterByID(loadDesc.id, 1.0f);
-        rpmEventInstance->start();
+        FMODAudio::CheckError(fmodSystem->loadBankFile(GAME_PATH((char*)"modloader\\GTAFmod\\banks\\common.strings.bank"), FMOD_STUDIO_LOAD_BANK_NORMAL, &stringsBank), "Failed on load bank Master String");
     }
     static void PrevGear()
     {
@@ -163,22 +104,38 @@ public:
                 && vehicle->m_nVehicleSubClass != VEHICLE_BOAT && vehicle->m_nVehicleSubClass != VEHICLE_BMX &&
                 vehicle->m_nVehicleSubClass != VEHICLE_TRAIN && CTimer::m_UserPause == false)
             {
-                //Check if sound is playing
-                if (bPlaying == false)
+                lastId = vehicle->m_vehicleAudio.m_nEngineAccelerateSoundBankId;
+                FMODAudio* audio = audios[lastId];
+                if (audio == NULL)
                 {
-                    rpmEventInstance->start();
-                    bPlaying = true;
+                    std::string section = "Bank" + std::to_string(lastId);
+                    CIniReader ini("banks\\banks.ini");
+                    std::string bank = ini.ReadString("CarBanks", section, "ks_toyota_ae86");
+
+                    CHud::SetHelpMessage(bank.c_str(), true, false, false);
+
+                    audio = new FMODAudio();
+                    //Load INI
+                    audio->LoadBank(fmodSystem, bank);
+
+                    audios[lastId] = audio;
                 }
+                if (audio->m_bIsPlaying == false)
+                {
+                    audio->m_RpmEventInstance->start();
+                    audio->m_bIsPlaying = true;
+                }
+
                 //Set 3D space position
                 CVector camPos = TheCamera.GetPosition();
                 CVector vehiclePos = vehicle->GetPosition();
 
-                attributes.position.x = vehiclePos.x - camPos.x;
-                attributes.position.y = vehiclePos.y - camPos.y;
-                attributes.position.z = vehiclePos.z - camPos.z;
-                rpmEventInstance->set3DAttributes(&attributes);
-                backFireEventInstance->set3DAttributes(&attributes);
-                gearEventInstance->set3DAttributes(&attributes);
+                audio->m_Attributes.position.x = vehiclePos.x - camPos.x;
+                audio->m_Attributes.position.y = vehiclePos.y - camPos.y;
+                audio->m_Attributes.position.z = vehiclePos.z - camPos.z;
+                audio->m_RpmEventInstance->set3DAttributes(&audio->m_Attributes);
+                audio->m_BackFireEventInstance->set3DAttributes(&audio->m_Attributes);
+                audio->m_GearEventInstance->set3DAttributes(&audio->m_Attributes);
 
                 //Get gas pedal
                 float gasPedal = vehicle->m_fGasPedal;
@@ -192,7 +149,7 @@ public:
                 {
                     if (nGear != nTargetGear)
                     {
-                        gearEventInstance->start();
+                        audio->m_GearEventInstance->start();
                     }
                     nGear = nTargetGear;
                     fClutch = 0;
@@ -353,11 +310,10 @@ public:
                     soundRpm = 0;
 
                 //Set FMOD parameters
-                rpmEventInstance->setParameterByID(rpmDesc.id, soundRpm);
-                rpmEventInstance->setParameterByID(loadDesc.id, -1 + (gasPedal * 2));
+                audio->m_RpmEventInstance->setParameterByID(audio->m_RpmDesc.id, soundRpm);
+                audio->m_RpmEventInstance->setParameterByID(audio->m_LoadDesc.id, -1 + (gasPedal * 2));
 
-                //Update FMOD
-                CheckError(fmodSystem->update(), "Update Failed");
+                //CMessages::AddMessageJumpQWithNumber(new char[] {"RPM ~1~ Gear ~1~ G ~1~"}, 3000, 0, lastId, soundRpm, fRPM, 0, 0, 0, false);
 
                 //Backfire event
                 if (gasPedal != fLastPedal)
@@ -366,21 +322,26 @@ public:
                     {
                         if (fRPM > 5000 && CTimer::m_snTimeInMilliseconds > (m_nLastSpawnedTime + 1000))
                         {
-                            backFireEventInstance->start();
+                            audio->m_BackFireEventInstance->start();
                             m_nLastSpawnedTime = CTimer::m_snTimeInMilliseconds;
                         }
                     }
                 }
                 fLastPedal = gasPedal;
+
+                //Update FMOD
+                FMODAudio::CheckError(fmodSystem->update(), "Update Failed");
             }
             else
             {
                 //Stop FMOD when exiting the vehicle
-                if (bPlaying == true)
+                if (lastId != -1)
                 {
-                    rpmEventInstance->stop(FMOD_STUDIO_STOP_IMMEDIATE);
-                    CheckError(fmodSystem->update(), "Update Failed");
-                    bPlaying = false;
+                    FMODAudio* audio = audios[lastId];
+                    audio->m_RpmEventInstance->stop(FMOD_STUDIO_STOP_IMMEDIATE);
+                    audio->m_bIsPlaying = false;
+                    FMODAudio::CheckError(fmodSystem->update(), "Update Failed");
+                    lastId = -1;
                 }
             }
         };

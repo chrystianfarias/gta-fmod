@@ -3,8 +3,12 @@
   <ItemGroup>
     <ClCompile Include="GTAFmod.cpp" />
     <ClCompile Include="Curve.cpp" />
+    <ClCompile Include="FMODAudio.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Curve.h" />
+    <ClInclude Include="IniReader\IniReader.h" />
+    <ClInclude Include="IniReader\ini_parser.hpp" />
+    <ClInclude Include="FMODAudio.h" />
   </ItemGroup>
 </Project>
