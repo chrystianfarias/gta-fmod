@@ -19,7 +19,7 @@ using namespace plugin;
 
 int m_nLastSpawnedTime;
 FMOD::Studio::System* fmodSystem = NULL;
-FMODAudio* audios[20];
+FMODAudio* audios[600];
 
 int nLastGearChangeTime = 0;
 unsigned int bAutomatic = 0;
@@ -30,6 +30,20 @@ int nTargetGear = 1;
 float fLastPedal = 0;
 bool engineState = true;
 int lastId = -1;
+
+void CAEVehicleAudioEntity__StoppedUsingBankSlot(int id)
+{
+    return ((void(__cdecl*)(int))0x4F4DF0)(id);
+}
+void CVehicle__CancelVehicleEngineSound(CAEVehicleAudioEntity* _this, int soundId)
+{
+    return ((void(__thiscall*)(CAEVehicleAudioEntity*, int))0x4F55C0)(_this, soundId);
+}
+void TurnEngine(CVehicle* v, bool value)
+{
+    engineState = value;
+    ((void(__thiscall*)(CVehicle*, bool))0x41BDD0)(v, value);
+}
 
 class GTAFmod {
 public:
@@ -65,11 +79,6 @@ public:
             nLastGearChangeTime = CTimer::m_snTimeInMilliseconds;
             fClutch = 1;
         }
-    }
-    static void TurnEngine(CVehicle* v, bool value)
-    {
-        engineState = value;
-        ((void(__thiscall*)(CVehicle*, bool))0x41BDD0)(v, value);
     }
     static void NextGear()
     {
@@ -108,15 +117,32 @@ public:
                 FMODAudio* audio = audios[lastId];
                 if (audio == NULL)
                 {
-                    std::string section = "Bank" + std::to_string(lastId);
-                    CIniReader ini("banks\\banks.ini");
-                    std::string bank = ini.ReadString("CarBanks", section, "ks_toyota_ae86");
+                    audio = audios[vehicle->m_nModelIndex];
+                }
+                else
+                {
+                    lastId = vehicle->m_nModelIndex;
+                }
 
-                    CHud::SetHelpMessage(bank.c_str(), true, false, false);
+                if (audio == NULL)
+                {
+                    std::string section = "Bank" + std::to_string(lastId);
+                    std::string sectionId = "Id" + std::to_string(vehicle->m_nModelIndex);
+                    CIniReader ini("banks\\banks.ini");
+                    std::string custom = ini.ReadString("CarBanks", sectionId, "");
+                    std::string bank = ini.ReadString("EngineBanks", section, "ks_toyota_ae86");
 
                     audio = new FMODAudio();
                     //Load INI
-                    audio->LoadBank(fmodSystem, bank);
+                    if (custom.empty())
+                    {
+                        audio->LoadBank(fmodSystem, bank);
+                    }
+                    else
+                    {
+                        audio->LoadBank(fmodSystem, custom);
+                        lastId = vehicle->m_nModelIndex;
+                    }
 
                     audios[lastId] = audio;
                 }
@@ -293,9 +319,6 @@ public:
                 //Set engine acceleration
                 vehicle->m_pHandlingData->m_transmissionData.m_fEngineAcceleration = (torqueBias * (1 - fClutch)) * gasPedal * (vehicle->m_fHealth / 1000);
                
-                //Debug variables
-                //CMessages::AddMessageJumpQWithNumber(new char[] {"RPM ~1~ Gear ~1~"}, 3000, 0, fRPM, sGear, torqueBias * 1000, 0, 0, 0, false);
-
                 //Clamp RPM sound
                 float soundRpm = fRPM;
                 if (soundRpm < 800)

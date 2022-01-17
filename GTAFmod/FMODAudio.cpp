@@ -35,11 +35,10 @@ void FMODAudio::LoadBank(FMOD::Studio::System* fmodSystem, std::string bank)
     CheckError(rpmEventDescription->getParameterDescriptionByName("throttle", &m_LoadDesc), "Failed on get parameter");
 
     //Set 3D space
+    m_RpmEventInstance->setVolume(.4);
     m_RpmEventInstance->set3DAttributes(&m_Attributes);
     m_RpmEventInstance->setParameterByID(m_RpmDesc.id, 0.0f);
     m_RpmEventInstance->setParameterByID(m_LoadDesc.id, 1.0f);
-
-    CHud::SetHelpMessage((event + "/engine_ext").c_str(), true, false, false);
 
     m_Attributes = { { 0 } };
     m_Attributes.forward.z = 1.0f;
