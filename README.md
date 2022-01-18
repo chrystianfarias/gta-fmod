@@ -9,4 +9,4 @@ This project uses [plugin-sdk](https://github.com/DK22Pac/plugin-sdk).
   See [releases page](https://github.com/chrystianfarias/gta-fmod/releases).
   
 ## Develop
-  See [wiki page](#)
+  See [wiki page](https://github.com/chrystianfarias/gta-fmod/wiki).
