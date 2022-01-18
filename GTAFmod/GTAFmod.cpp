@@ -192,16 +192,16 @@ public:
                 nLastId = -1;
                 //Try with instance
                 FMODAudio* audio = audioInstance[vehicle];
-                //Try with sound bank
-                if (audio == NULL)
-                {
-                    nLastId = vehicle->m_vehicleAudio.m_nEngineAccelerateSoundBankId;
-                    audio = audios[nLastId];
-                }
                 //Try with model index
                 if (audio == NULL)
                 {
                     nLastId = vehicle->m_nModelIndex;
+                    audio = audios[nLastId];
+                }
+                //Try with sound bank
+                if (audio == NULL)
+                {
+                    nLastId = vehicle->m_vehicleAudio.m_nEngineAccelerateSoundBankId;
                     audio = audios[nLastId];
                 }
 
