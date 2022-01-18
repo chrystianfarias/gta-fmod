@@ -90,6 +90,15 @@ public:
             fClutch = 1;
         }
     }
+    static void SetToGear(int gear)
+    {
+        nTargetGear = gear;
+        if (nGear != nTargetGear)
+        {
+            nLastGearChangeTime = CTimer::m_snTimeInMilliseconds;
+            fClutch = 1;
+        }
+    }
     static void NextGear()
     {
         nTargetGear += 1;
@@ -162,6 +171,8 @@ public:
 
             //Find Vehicle
             CVehicle* vehicle = FindPlayerVehicle(-1, true);
+            CAutomobile* automobile = reinterpret_cast<CAutomobile*>(vehicle);
+
             if (vehicle && vehicle->m_nVehicleSubClass != VEHICLE_PLANE && vehicle->m_nVehicleSubClass != VEHICLE_HELI
                 && vehicle->m_nVehicleSubClass != VEHICLE_BOAT && vehicle->m_nVehicleSubClass != VEHICLE_BMX &&
                 vehicle->m_nVehicleSubClass != VEHICLE_TRAIN && CTimer::m_UserPause == false)
@@ -232,7 +243,7 @@ public:
                 audio->m_GearEventInstance->set3DAttributes(&audio->m_Attributes);
 
                 //Get gas pedal
-                float gasPedal = vehicle->m_fGasPedal;
+                float gasPedal = abs(vehicle->m_fGasPedal);
 
                 //Gear change time
                 if (CTimer::m_snTimeInMilliseconds < (nLastGearChangeTime + 800))
@@ -247,7 +258,7 @@ public:
                     }
                     nGear = nTargetGear;
                     fClutch = 0;
-                    gasPedal = vehicle->m_fGasPedal;
+                    gasPedal = abs(vehicle->m_fGasPedal);
                 }
                 //Clutch Key
                 if (KeyPressed(iniConfig->m_nClutchGearKey))
@@ -276,7 +287,7 @@ public:
                 float targetRpm = 400 + (vehicle->m_vecMoveSpeed.Magnitude() * abs(relation[nGear + 1])) * (iniConfig->m_fFinalRPM - 2000);
 
                 //If Neutral (0) is equals clutch
-                if (nGear == 0)
+                if (nGear == 0 || automobile->m_nWheelsOnGround == 0)
                     fClutch = 1;
 
                 if (fClutch > 0)
@@ -341,21 +352,13 @@ public:
                     m_nLastSpawnedTime = CTimer::m_snTimeInMilliseconds;
                 }*/
                 //Automatic Gearbox 
-                if (iniConfig->m_bAutomaticGearbox && CTimer::m_snTimeInMilliseconds > (nLastGearChangeTime + 1500) && fClutch == 0)
+                if (iniConfig->m_bAutomaticGearbox)
                 {
-                    if (speed == 0)
-                    {
-                        nGear = 1;
-                    }
-                    if (gasPedal > 0 && fRPM > 5500)
+                    if (nGear < 5 && fRPM > 6500 && CTimer::m_snTimeInMilliseconds > (nLastGearChangeTime + 800) && fClutch == 0)
                     {
                         NextGear();
                     }
-                    if (gasPedal > 0 && fRPM < 1000)
-                    {
-                        PrevGear();
-                    }
-                    if (gasPedal == 0 && fRPM > 3000)
+                    if (nTargetGear > 1 && fRPM < 3000 && fClutch == 0)
                     {
                         PrevGear();
                     }
@@ -369,11 +372,8 @@ public:
                 }
                 if (nGear == -1)
                 {
-                    torqueBias *= -1;
-                }
-                if (nGear == 0)
-                {
-                    torqueBias = 0;
+                    if (torqueBias > 0)
+                        torqueBias *= -1;
                 }
                 //Set engine acceleration
                 vehicle->m_pHandlingData->m_transmissionData.m_fEngineAcceleration = (torqueBias * (1 - fClutch)) * gasPedal * (vehicle->m_fHealth / 1000);
@@ -431,6 +431,14 @@ extern "C" float __declspec(dllexport) Ext_GetCurrentRPM()
 extern "C" int __declspec(dllexport) Ext_GetCurrentGear()
 {
     return nGear;
+}
+extern "C" void __declspec(dllexport) Ext_SetCurrentGear(int gear)
+{
+    return GTAFmod::SetToGear(gear);
+}
+extern "C" void __declspec(dllexport) Ext_SetClutchValue(float value)
+{
+    fClutch = value;
 }
 extern "C" float __declspec(dllexport) Ext_GetClutchValue()
 {

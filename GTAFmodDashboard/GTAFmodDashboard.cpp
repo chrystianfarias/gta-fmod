@@ -40,6 +40,15 @@ public:
                 if (gtaFmod_Ext_GetCurrentRPM) {
                     float rpm = gtaFmod_Ext_GetCurrentRPM();
                     int gear = gtaFmod_Ext_GetCurrentGear();
+                    std::string sGear = std::to_string(gear);
+                    if (gear == 0)
+                    {
+                        sGear = "N";
+                    }
+                    if (gear == -1)
+                    {
+                        sGear = "R";
+                    }
                     CMessages::AddMessageJumpQWithNumber(new char[] {"Gear ~1~ RPM ~1~"}, 3000, 0, gear, rpm, 0, 0, 0, 0, false);
                 }
 
