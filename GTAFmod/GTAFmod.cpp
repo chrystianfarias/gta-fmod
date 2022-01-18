@@ -66,17 +66,17 @@ public:
         FMOD::System* coreSystem = NULL;
         FMODAudio::CheckError(fmodSystem->getCoreSystem(&coreSystem), "Failed on create FMOD CORE System");
         FMODAudio::CheckError(coreSystem->setSoftwareFormat(0, FMOD_SPEAKERMODE_5POINT1, 0), "Failed on set software format");
-        FMODAudio::CheckError(coreSystem->setPluginPath(GAME_PATH((char*)"modloader\\GTAFmod\\plugins")), "Failed on set path");
+        FMODAudio::CheckError(coreSystem->setPluginPath(PLUGIN_PATH((char*)"plugins")), "Failed on set path");
         FMODAudio::CheckError(coreSystem->loadPlugin("fmod_distance_filterL.dll", 0, 0), "Failed on load plugin");
 
         FMODAudio::CheckError(fmodSystem->initialize(1024, FMOD_STUDIO_INIT_NORMAL, FMOD_INIT_NORMAL, extraDriverData), "Failed to initialize");
 
         //Load banks
         FMOD::Studio::Bank* masterBank = NULL;
-        FMODAudio::CheckError(fmodSystem->loadBankFile(GAME_PATH((char*)"modloader\\GTAFmod\\banks\\common.bank"), FMOD_STUDIO_LOAD_BANK_NORMAL, &masterBank), "Failed on load bank Master");
+        FMODAudio::CheckError(fmodSystem->loadBankFile(PLUGIN_PATH((char*)"banks\\common.bank"), FMOD_STUDIO_LOAD_BANK_NORMAL, &masterBank), "Failed on load bank Master");
 
         FMOD::Studio::Bank* stringsBank = NULL;
-        FMODAudio::CheckError(fmodSystem->loadBankFile(GAME_PATH((char*)"modloader\\GTAFmod\\banks\\common.strings.bank"), FMOD_STUDIO_LOAD_BANK_NORMAL, &stringsBank), "Failed on load bank Master String");
+        FMODAudio::CheckError(fmodSystem->loadBankFile(PLUGIN_PATH((char*)"banks\\common.strings.bank"), FMOD_STUDIO_LOAD_BANK_NORMAL, &stringsBank), "Failed on load bank Master String");
     }
     static void PrevGear()
     {
@@ -111,7 +111,16 @@ public:
             fClutch = 1;
         }
     }
-    static void SetVehicleFMODBank(CVehicle* vehicle, std::string bank)
+    static void SetIndexFMODBank(int id, char* bank, char* absolutePath)
+    {
+        StopCurrentAudio();
+
+        FMODAudio* audio = new FMODAudio();
+        audio->LoadBank(fmodSystem, bank, absolutePath);
+
+        audios[id] = audio;
+    }
+    static void SetVehicleFMODBank(CVehicle* vehicle, char* bank, char* absolutePath)
     {
         if (vehicle == NULL)
             return;
@@ -124,7 +133,7 @@ public:
             audioInstance.insert(std::make_pair(vehicle, audio));
         }
         FMODAudio* audio = new FMODAudio();
-        audio->LoadBank(fmodSystem, bank);
+        audio->LoadBank(fmodSystem, bank, absolutePath);
 
         audioInstance[vehicle] = audio;
 
@@ -205,16 +214,17 @@ public:
                     std::string defaultBank = ini.ReadString("EngineBanks", "Default", "");
                     std::string custom = ini.ReadString("CarBanks", sectionId, "");
                     std::string bank = ini.ReadString("EngineBanks", section, defaultBank);
+                    std::string path = "banks\\" + bank + ".bank";
 
                     audio = new FMODAudio();
                     //Load INI
                     if (custom.empty())
                     {
-                        audio->LoadBank(fmodSystem, bank);
+                        audio->LoadBank(fmodSystem, (char*)bank.c_str(), PLUGIN_PATH((char*)path.c_str()));
                     }
                     else
                     {
-                        audio->LoadBank(fmodSystem, custom);
+                        audio->LoadBank(fmodSystem, (char*)custom.c_str(), PLUGIN_PATH((char*)path.c_str()));
                         nLastId = vehicle->m_nModelIndex;
                     }
 
@@ -444,7 +454,16 @@ extern "C" float __declspec(dllexport) Ext_GetClutchValue()
 {
     return fClutch;
 }
-extern "C" void __declspec(dllexport) Ext_SetVehicleFMODBank(CVehicle* vehicle, std::string bank)
+
+extern "C" void __declspec(dllexport) Ext_SetEngineSoundIdFMODBank(int id, char* bank, char* absolutePath)
 {
-    return GTAFmod::SetVehicleFMODBank(vehicle, bank);
+    return GTAFmod::SetIndexFMODBank(id, bank, absolutePath);
+}
+extern "C" void __declspec(dllexport) Ext_SetModelIdFMODBank(int id, char* bank, char* absolutePath)
+{
+    return GTAFmod::SetIndexFMODBank(id, bank, absolutePath);
+}
+extern "C" void __declspec(dllexport) Ext_SetVehicleFMODBank(CVehicle* vehicle, char* bank, char* absolutePath)
+{
+    return GTAFmod::SetVehicleFMODBank(vehicle, bank, absolutePath);
 }

@@ -3,15 +3,15 @@
 #include <string>
 #include <game_sa/CHud.h>
 
-void FMODAudio::LoadBank(FMOD::Studio::System* fmodSystem, std::string bank)
+void FMODAudio::LoadBank(FMOD::Studio::System* fmodSystem, char* bank, char* absolutePath)
 {
     m_bIsLoaded = false;
 
-    const std::string path = "modloader\\GTAFmod\\banks\\" + bank + ".bank";
-    const std::string event = "event:/cars/" + bank;
+    const std::string eventName = bank;
+    const std::string event = "event:/cars/" + eventName;
 
     FMOD::Studio::Bank* vehiclesBank = NULL;
-    CheckError(fmodSystem->loadBankFile(GAME_PATH((char*)path.c_str()), FMOD_STUDIO_LOAD_BANK_NORMAL, &vehiclesBank), "Failed on load bank SFX");
+    CheckError(fmodSystem->loadBankFile(absolutePath, FMOD_STUDIO_LOAD_BANK_NORMAL, &vehiclesBank), "Failed on load bank SFX");
 
     //Load events
     FMOD::Studio::EventDescription* rpmEventDescription = NULL;

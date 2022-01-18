@@ -17,7 +17,7 @@ public:
 	FMOD_STUDIO_PARAMETER_DESCRIPTION m_LoadDesc;
 	FMOD_3D_ATTRIBUTES m_Attributes;
 
-	void LoadBank(FMOD::Studio::System* fmodSystem, std::string bank);
+    void LoadBank(FMOD::Studio::System* fmodSystem, char* bank, char* absolutePath);
 
     static void CheckError(FMOD_RESULT result, const char* text)
     {

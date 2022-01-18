@@ -10,7 +10,7 @@ GTAFmod_Ext_GetCurrentRPM gtaFmod_Ext_GetCurrentRPM;
 typedef int(__cdecl* GTAFmod_Ext_GetCurrentGear)();
 GTAFmod_Ext_GetCurrentGear gtaFmod_Ext_GetCurrentGear;
 
-typedef void(__cdecl* GTAFmod_Ext_SetVehicleFMODBank)(CVehicle* vehicle, std::string bank);
+typedef void(__cdecl* GTAFmod_Ext_SetVehicleFMODBank)(CVehicle* vehicle, char* bank, char* absolutePath);
 GTAFmod_Ext_SetVehicleFMODBank gtaFmod_Ext_SetVehicleFMODBank;
 
 
@@ -54,7 +54,7 @@ public:
 
                 if (KeyPressed(VK_F8) && CTimer::m_snTimeInMilliseconds >= (keyTime + 2000))
                 {
-                    gtaFmod_Ext_SetVehicleFMODBank(vehicle, "ks_mazda_rx7_spirit_r");
+                    gtaFmod_Ext_SetVehicleFMODBank(vehicle, (char*)"ks_mazda_rx7_spirit_r", GAME_PATH((char*)"modloader\\GTAFmod\\banks\\ks_mazda_rx7_spirit_r.bank"));
                     keyTime = CTimer::m_snTimeInMilliseconds;
                 }
             }
