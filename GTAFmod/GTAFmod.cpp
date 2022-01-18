@@ -21,6 +21,8 @@ using namespace plugin;
 int m_nLastSpawnedTime;
 FMOD::Studio::System* fmodSystem = NULL;
 FMODAudio* audios[600];
+std::map<CVehicle*, FMODAudio*> audioInstance;
+CVehicle* lastVehicle;
 INIConfig* iniConfig;
 
 int nLastGearChangeTime = 0;
@@ -29,8 +31,9 @@ float fRPM = 800;
 int nGear = 0;
 int nTargetGear = 1;
 float fLastPedal = 0;
-bool engineState = true;
-int lastId = -1;
+bool bEngineState = true;
+bool bFmodBusy = false;
+int nLastId = -1;
 
 void CAEVehicleAudioEntity__StoppedUsingBankSlot(int id)
 {
@@ -42,7 +45,7 @@ void CVehicle__CancelVehicleEngineSound(CAEVehicleAudioEntity* _this, int soundI
 }
 void TurnEngine(CVehicle* v, bool value)
 {
-    engineState = value;
+    bEngineState = value;
     ((void(__thiscall*)(CVehicle*, bool))0x41BDD0)(v, value);
 }
 
@@ -99,6 +102,49 @@ public:
             fClutch = 1;
         }
     }
+    static void SetVehicleFMODBank(CVehicle* vehicle, std::string bank)
+    {
+        if (vehicle == NULL)
+            return;
+        bFmodBusy = true;
+
+        StopCurrentAudio();
+        if (audioInstance[vehicle] == NULL)
+        {
+            FMODAudio* audio = new FMODAudio();
+            audioInstance.insert(std::make_pair(vehicle, audio));
+        }
+        FMODAudio* audio = new FMODAudio();
+        audio->LoadBank(fmodSystem, bank);
+
+        audioInstance[vehicle] = audio;
+
+        bFmodBusy = false;
+    }
+    static void StopCurrentAudio()
+    {
+        if (lastVehicle != NULL)
+        {
+            if (audioInstance[lastVehicle] != NULL)
+            {
+                FMODAudio* audio = audioInstance[lastVehicle];
+                audio->m_RpmEventInstance->stop(FMOD_STUDIO_STOP_IMMEDIATE);
+                audio->m_bIsPlaying = false;
+                FMODAudio::CheckError(fmodSystem->update(), "Update Failed");
+                lastVehicle = NULL;
+            }
+        }
+
+        //Stop FMOD when exiting the vehicle
+        if (nLastId != -1)
+        {
+            FMODAudio* audio = audios[nLastId];
+            audio->m_RpmEventInstance->stop(FMOD_STUDIO_STOP_IMMEDIATE);
+            audio->m_bIsPlaying = false;
+            FMODAudio::CheckError(fmodSystem->update(), "Update Failed");
+            nLastId = -1;
+        }
+    }
 
     GTAFmod() {
         //Initialize FMOD on game start
@@ -120,18 +166,29 @@ public:
                 && vehicle->m_nVehicleSubClass != VEHICLE_BOAT && vehicle->m_nVehicleSubClass != VEHICLE_BMX &&
                 vehicle->m_nVehicleSubClass != VEHICLE_TRAIN && CTimer::m_UserPause == false)
             {
-                lastId = vehicle->m_vehicleAudio.m_nEngineAccelerateSoundBankId;
-                FMODAudio* audio = audios[lastId];
+                if (bFmodBusy)
+                    return;
+
+                nLastId = -1;
+                //Try with instance
+                FMODAudio* audio = audioInstance[vehicle];
+                //Try with sound bank
                 if (audio == NULL)
                 {
-                    audio = audios[vehicle->m_nModelIndex];
-                    lastId = vehicle->m_nModelIndex;
+                    nLastId = vehicle->m_vehicleAudio.m_nEngineAccelerateSoundBankId;
+                    audio = audios[nLastId];
+                }
+                //Try with model index
+                if (audio == NULL)
+                {
+                    nLastId = vehicle->m_nModelIndex;
+                    audio = audios[nLastId];
                 }
 
                 if (audio == NULL)
                 {
-                    lastId = vehicle->m_vehicleAudio.m_nEngineAccelerateSoundBankId;
-                    std::string section = "Bank" + std::to_string(lastId);
+                    nLastId = vehicle->m_vehicleAudio.m_nEngineAccelerateSoundBankId;
+                    std::string section = "Bank" + std::to_string(nLastId);
                     std::string sectionId = "Id" + std::to_string(vehicle->m_nModelIndex);
                     CIniReader ini("banks\\banks.ini");
                     std::string defaultBank = ini.ReadString("EngineBanks", "Default", "");
@@ -147,13 +204,18 @@ public:
                     else
                     {
                         audio->LoadBank(fmodSystem, custom);
-                        lastId = vehicle->m_nModelIndex;
+                        nLastId = vehicle->m_nModelIndex;
                     }
 
-                    audios[lastId] = audio;
+                    audios[nLastId] = audio;
+                }
+                if (audio->m_bIsLoaded == false)
+                {
+                    return;
                 }
                 if (audio->m_bIsPlaying == false)
                 {
+                    fRPM = 800;
                     audio->m_RpmEventInstance->start();
                     audio->m_bIsPlaying = true;
                 }
@@ -281,6 +343,10 @@ public:
                 //Automatic Gearbox 
                 if (iniConfig->m_bAutomaticGearbox && CTimer::m_snTimeInMilliseconds > (nLastGearChangeTime + 1500) && fClutch == 0)
                 {
+                    if (speed == 0)
+                    {
+                        nGear = 1;
+                    }
                     if (gasPedal > 0 && fRPM > 5500)
                     {
                         NextGear();
@@ -322,7 +388,7 @@ public:
                 {
                     soundRpm = iniConfig->m_fFinalRPM + 1000;
                 }
-                if (engineState == false)
+                if (bEngineState == false)
                     soundRpm = 0;
 
                 //Set FMOD parameters
@@ -343,6 +409,7 @@ public:
                         }
                     }
                 }
+                lastVehicle = vehicle;
                 fLastPedal = gasPedal;
 
                 //Update FMOD
@@ -350,15 +417,7 @@ public:
             }
             else
             {
-                //Stop FMOD when exiting the vehicle
-                if (lastId != -1)
-                {
-                    FMODAudio* audio = audios[lastId];
-                    audio->m_RpmEventInstance->stop(FMOD_STUDIO_STOP_IMMEDIATE);
-                    audio->m_bIsPlaying = false;
-                    FMODAudio::CheckError(fmodSystem->update(), "Update Failed");
-                    lastId = -1;
-                }
+                StopCurrentAudio();
             }
         };
     }
@@ -369,11 +428,15 @@ extern "C" float __declspec(dllexport) Ext_GetCurrentRPM()
 {
     return fRPM;
 }
-extern "C" float __declspec(dllexport) Ext_GetCurrentGear()
+extern "C" int __declspec(dllexport) Ext_GetCurrentGear()
 {
     return nGear;
 }
 extern "C" float __declspec(dllexport) Ext_GetClutchValue()
 {
     return fClutch;
+}
+extern "C" void __declspec(dllexport) Ext_SetVehicleFMODBank(CVehicle* vehicle, std::string bank)
+{
+    return GTAFmod::SetVehicleFMODBank(vehicle, bank);
 }

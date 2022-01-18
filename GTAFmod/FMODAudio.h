@@ -8,7 +8,7 @@ class FMODAudio
 {
 public:
 
-    bool m_bIsLoaded;
+    bool m_bIsLoaded = false;
     bool m_bIsPlaying = false;
 	FMOD::Studio::EventInstance* m_RpmEventInstance;
 	FMOD::Studio::EventInstance* m_BackFireEventInstance;

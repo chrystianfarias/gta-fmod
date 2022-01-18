@@ -5,6 +5,8 @@
 
 void FMODAudio::LoadBank(FMOD::Studio::System* fmodSystem, std::string bank)
 {
+    m_bIsLoaded = false;
+
     const std::string path = "modloader\\GTAFmod\\banks\\" + bank + ".bank";
     const std::string event = "event:/cars/" + bank;
 
