@@ -97,10 +97,12 @@
     <ClCompile Include="Curve.cpp" />
     <ClCompile Include="FMODAudio.cpp" />
     <ClCompile Include="GTAFmod.cpp" />
+    <ClCompile Include="INIConfig.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Curve.h" />
     <ClInclude Include="FMODAudio.h" />
+    <ClInclude Include="INIConfig.h" />
     <ClInclude Include="IniReader\IniReader.h" />
     <ClInclude Include="IniReader\ini_parser.hpp" />
   </ItemGroup>

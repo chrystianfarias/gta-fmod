@@ -14,15 +14,16 @@
 #include <sstream>
 #include "FMODAudio.h"
 #include "IniReader/IniReader.h"
+#include "INIConfig.h"
 
 using namespace plugin;
 
 int m_nLastSpawnedTime;
 FMOD::Studio::System* fmodSystem = NULL;
 FMODAudio* audios[600];
+INIConfig* iniConfig;
 
 int nLastGearChangeTime = 0;
-unsigned int bAutomatic = 0;
 float fClutch = 0;
 float fRPM = 800;
 int nGear = 0;
@@ -47,8 +48,14 @@ void TurnEngine(CVehicle* v, bool value)
 
 class GTAFmod {
 public:
+    static void LoadConfigs()
+    {
+        iniConfig = new INIConfig("config.ini");
+        InitializeFmod();
+    }
     static void InitializeFmod()
     {
+
         void* extraDriverData = NULL;
         FMODAudio::CheckError(FMOD::Studio::System::create(&fmodSystem), "Failed on create FMOD System");
 
@@ -95,15 +102,15 @@ public:
 
     GTAFmod() {
         //Initialize FMOD on game start
-        Events::initGameEvent.after.Add(InitializeFmod);
+        Events::initGameEvent.after.Add(LoadConfigs);
 
         //Update FMOD
-        Events::gameProcessEvent.before += [](){
+        Events::gameProcessEvent += [](){
             //Torque Curve
             CVector2D points[] = {
-                CVector2D(0, 0.8),
-                CVector2D(4500, 1.2),
-                CVector2D(8000, 0.1)
+                CVector2D(iniConfig->m_fMinRPM, iniConfig->m_fMinRPMTorque),
+                CVector2D(iniConfig->m_fMidRPM, iniConfig->m_fMidRPMTorque),
+                CVector2D(iniConfig->m_fFinalRPM, iniConfig->m_fFinalRPMTorque)
             };
             Curve torqueCurve = Curve(points);
 
@@ -127,8 +134,9 @@ public:
                     std::string section = "Bank" + std::to_string(lastId);
                     std::string sectionId = "Id" + std::to_string(vehicle->m_nModelIndex);
                     CIniReader ini("banks\\banks.ini");
+                    std::string defaultBank = ini.ReadString("EngineBanks", "Default", "");
                     std::string custom = ini.ReadString("CarBanks", sectionId, "");
-                    std::string bank = ini.ReadString("EngineBanks", section, "ks_toyota_ae86");
+                    std::string bank = ini.ReadString("EngineBanks", section, defaultBank);
 
                     audio = new FMODAudio();
                     //Load INI
@@ -180,7 +188,7 @@ public:
                     gasPedal = vehicle->m_fGasPedal;
                 }
                 //Clutch Key
-                if (KeyPressed(VK_F7))
+                if (KeyPressed(iniConfig->m_nClutchGearKey))
                 {
                     fClutch = 1;
                 }
@@ -190,14 +198,20 @@ public:
 
                 //Gear relation
                 float relation[] = {
-                    -3, 0, 3, 2, 1.6, 1.2, 0.9, 0.7
+                    iniConfig->m_fRalationR,
+                    iniConfig->m_fRalationN,
+                    iniConfig->m_fRalation1,
+                    iniConfig->m_fRalation2,
+                    iniConfig->m_fRalation3,
+                    iniConfig->m_fRalation4,
+                    iniConfig->m_fRalation5
                 };
 
                 //Calculate Speed
                 float speed = vehicle->m_vecMoveSpeed.Magnitude() * 175;
 
                 //Calculate target RPM
-                float targetRpm = 400 + (vehicle->m_vecMoveSpeed.Magnitude() * abs(relation[nGear + 1])) * 6000;
+                float targetRpm = 400 + (vehicle->m_vecMoveSpeed.Magnitude() * abs(relation[nGear + 1])) * (iniConfig->m_fFinalRPM - 2000);
 
                 //If Neutral (0) is equals clutch
                 if (nGear == 0)
@@ -219,15 +233,18 @@ public:
                 {
                     if (fRPM < targetRpm)
                     {
-                        fRPM += (CTimer::ms_fTimeStep) * 50;
-                        if (fRPM > torqueCurve.maxX + 800)
+                        fRPM += (CTimer::ms_fTimeStep) * iniConfig->m_fRPMAcceleration;
+                        if (iniConfig->m_bDamageWhenShiftingWrong)
                         {
-                            vehicle->m_fHealth -= 80.0;
+                            if (fRPM > torqueCurve.maxX + iniConfig->m_fMaxRPMDamage)
+                            {
+                                vehicle->m_fHealth -= (CTimer::ms_fTimeStep) * iniConfig->m_fDamageMultiply;
+                            }
                         }
                     }
                     else
                     {
-                        fRPM -= (CTimer::ms_fTimeStep) * 60;
+                        fRPM -= (CTimer::ms_fTimeStep) *iniConfig->m_fRPMDesaceleration;
                     }
                 }
                 //Engine off if RPM is less than 300
@@ -237,12 +254,12 @@ public:
                     CHud::SetHelpMessage("Engine OFF", true, false, false);
                 }*/
                 //Next Gear Key
-                if (KeyPressed(VK_SHIFT) && CTimer::m_snTimeInMilliseconds > (nLastGearChangeTime + 200))
+                if (KeyPressed(iniConfig->m_nUpGearKey) && CTimer::m_snTimeInMilliseconds > (nLastGearChangeTime + 200))
                 {
                     NextGear();
                 }
                 //Prev Gear
-                if (KeyPressed(VK_CONTROL) && CTimer::m_snTimeInMilliseconds > (nLastGearChangeTime + 200))
+                if (KeyPressed(iniConfig->m_nDownGearKey) && CTimer::m_snTimeInMilliseconds > (nLastGearChangeTime + 200))
                 {
                     PrevGear();
                 }
@@ -261,23 +278,8 @@ public:
                     }
                     m_nLastSpawnedTime = CTimer::m_snTimeInMilliseconds;
                 }*/
-                //Automatic gearbox on/off Key
-                if (KeyPressed(VK_F6) && CTimer::m_snTimeInMilliseconds > (m_nLastSpawnedTime + 200))
-                {
-                    if (bAutomatic == 0)
-                    {
-                        bAutomatic = 1;
-                        CHud::SetHelpMessage("Automatic: ON", true, false, false);
-                    }
-                    else
-                    {
-                        bAutomatic = 0;
-                        CHud::SetHelpMessage("Automatic: OFF", true, false, false);
-                    }
-                    m_nLastSpawnedTime = CTimer::m_snTimeInMilliseconds;
-                }
                 //Automatic Gearbox 
-                if (bAutomatic == 1 && CTimer::m_snTimeInMilliseconds > (nLastGearChangeTime + 1500) && fClutch == 0)
+                if (iniConfig->m_bAutomaticGearbox && CTimer::m_snTimeInMilliseconds > (nLastGearChangeTime + 1500) && fClutch == 0)
                 {
                     if (gasPedal > 0 && fRPM > 5500)
                     {
@@ -292,40 +294,33 @@ public:
                         PrevGear();
                     }
                 }
-                char sGear;
-                if (nGear > 0)
-                {
-                    sGear = nGear;
-                }
 
                 //Evaluate Torque Curve
                 float torqueBias = torqueCurve.Evaluate(fRPM) * 0.002;
                 if (fRPM > torqueCurve.maxX)
                 {
-                    torqueBias = -0.1 * (fRPM / 8000);
+                    torqueBias = -0.1 * (fRPM / iniConfig->m_fFinalRPM);
                 }
                 if (nGear == -1)
                 {
-                    sGear = 'R';
                     torqueBias *= -1;
                 }
                 if (nGear == 0)
                 {
-                    sGear = 'N';
                     torqueBias = 0;
                 }
                 //Set engine acceleration
                 vehicle->m_pHandlingData->m_transmissionData.m_fEngineAcceleration = (torqueBias * (1 - fClutch)) * gasPedal * (vehicle->m_fHealth / 1000);
                
                 //Clamp RPM sound
-                float soundRpm = fRPM;
-                if (soundRpm < 800)
+                float soundRpm = fRPM * iniConfig->m_fPitchMultiply;
+                if (soundRpm < iniConfig->m_fMinRPM)
                 {
-                    soundRpm = 800;
+                    soundRpm = iniConfig->m_fMinRPM;
                 }
-                if (soundRpm > 9000)
+                if (soundRpm > iniConfig->m_fFinalRPM + 1000)
                 {
-                    soundRpm = 9000;
+                    soundRpm = iniConfig->m_fFinalRPM + 1000;
                 }
                 if (engineState == false)
                     soundRpm = 0;
