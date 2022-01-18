@@ -215,6 +215,7 @@ public:
                     std::string custom = ini.ReadString("CarBanks", sectionId, "");
                     std::string bank = ini.ReadString("EngineBanks", section, defaultBank);
                     std::string path = "banks\\" + bank + ".bank";
+                    std::string customPath = "banks\\" + custom + ".bank";
 
                     audio = new FMODAudio();
                     //Load INI
@@ -224,7 +225,7 @@ public:
                     }
                     else
                     {
-                        audio->LoadBank(fmodSystem, (char*)custom.c_str(), PLUGIN_PATH((char*)path.c_str()));
+                        audio->LoadBank(fmodSystem, (char*)custom.c_str(), PLUGIN_PATH((char*)customPath.c_str()));
                         nLastId = vehicle->m_nModelIndex;
                     }
 
