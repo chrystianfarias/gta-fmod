@@ -49,6 +49,10 @@ void TurnEngine(CVehicle* v, bool value)
     bEngineState = value;
     ((void(__thiscall*)(CVehicle*, bool))0x41BDD0)(v, value);
 }
+static bool CamNoRain()
+{
+    return ((bool(__thiscall*)())0x72DDB0)();
+}
 
 class GTAFmod {
 public:
@@ -69,8 +73,11 @@ public:
         FMODAudio::CheckError(coreSystem->setSoftwareFormat(0, FMOD_SPEAKERMODE_5POINT1, 0), "Failed on set software format");
         FMODAudio::CheckError(coreSystem->setPluginPath(PLUGIN_PATH((char*)"plugins")), "Failed on set path");
         FMODAudio::CheckError(coreSystem->loadPlugin("fmod_distance_filterL.dll", 0, 0), "Failed on load plugin");
-
+        
         FMODAudio::CheckError(fmodSystem->initialize(1024, FMOD_STUDIO_INIT_NORMAL, FMOD_INIT_NORMAL, extraDriverData), "Failed to initialize");
+
+        FMOD_REVERB_PROPERTIES props = FMOD_PRESET_HANGAR;
+        FMODAudio::CheckError(coreSystem->setReverbProperties(0, &props), "Failed on set reverb");
 
         //Load banks
         FMOD::Studio::Bank* masterBank = NULL;
@@ -84,7 +91,7 @@ public:
         nTargetGear -= 1;
         if (nTargetGear < -1)
             nTargetGear = -1;
-
+        
         if (nGear != nTargetGear)
         {
             nLastGearChangeTime = CTimer::m_snTimeInMilliseconds;
@@ -269,6 +276,10 @@ public:
                 audio->m_Attributes.up.y = dirUp.y - vehiclePos.y;
                 audio->m_Attributes.up.z = dirUp.z - vehiclePos.z;
                 
+                FMOD::ChannelGroup* grp;
+                audio->m_RpmEventInstance->getChannelGroup(&grp);
+                grp->setReverbProperties(0, CamNoRain() ? 1.0 : 0.0);
+
                 audio->m_RpmEventInstance->set3DAttributes(&audio->m_Attributes);
                 audio->m_BackFireEventInstance->set3DAttributes(&audio->m_Attributes);
                 audio->m_GearEventInstance->set3DAttributes(&audio->m_Attributes);
