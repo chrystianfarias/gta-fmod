@@ -7,6 +7,7 @@
 #include "fmod_studio.hpp"
 #include "fmod_errors.h"
 #include "Curve.h"
+#include "CModelInfo.h"
 
 #include <stdio.h>
 #include <string>
@@ -245,13 +246,40 @@ public:
                 //Set 3D space position
                 CVector camPos = TheCamera.GetPosition();
                 CVector vehiclePos = vehicle->GetPosition();
+                CVector pos = vehiclePos - camPos;
+                CVector dirFor;
+                CVector dirUp;
+                CVector offsetFor = CVector(0, -1, 0);
+                CVector offsetUp = CVector(0, 0, 1);
+                CMatrix* matrix = vehicle->m_matrix;
+                RwV3dTransformPoint((RwV3d*)&dirFor, (RwV3d*)&offsetFor, (RwMatrix*)matrix);
+                RwV3dTransformPoint((RwV3d*)&dirUp, (RwV3d*)&offsetUp, (RwMatrix*)matrix);
+                
+                audio->m_Attributes.position.x = vehiclePos.x;
+                audio->m_Attributes.position.y = vehiclePos.y;
+                audio->m_Attributes.position.z = vehiclePos.z;
+                audio->m_Attributes.velocity.x = vehicle->m_vecMoveSpeed.x;
+                audio->m_Attributes.velocity.y = vehicle->m_vecMoveSpeed.y;
+                audio->m_Attributes.velocity.z = vehicle->m_vecMoveSpeed.z;
 
-                audio->m_Attributes.position.x = vehiclePos.x - camPos.x;
-                audio->m_Attributes.position.y = vehiclePos.y - camPos.y;
-                audio->m_Attributes.position.z = vehiclePos.z - camPos.z;
+                audio->m_Attributes.forward.x = dirFor.x - vehiclePos.x;
+                audio->m_Attributes.forward.y = dirFor.y - vehiclePos.y;
+                audio->m_Attributes.forward.z = dirFor.z - vehiclePos.z;
+                audio->m_Attributes.up.x = dirUp.x - vehiclePos.x;
+                audio->m_Attributes.up.y = dirUp.y - vehiclePos.y;
+                audio->m_Attributes.up.z = dirUp.z - vehiclePos.z;
+                
                 audio->m_RpmEventInstance->set3DAttributes(&audio->m_Attributes);
                 audio->m_BackFireEventInstance->set3DAttributes(&audio->m_Attributes);
                 audio->m_GearEventInstance->set3DAttributes(&audio->m_Attributes);
+
+                audio->m_ListenerAttributes.position.x = camPos.x;
+                audio->m_ListenerAttributes.position.y = camPos.y;
+                audio->m_ListenerAttributes.position.z = camPos.z;
+                audio->m_ListenerAttributes.forward = audio->m_Attributes.forward;
+                audio->m_ListenerAttributes.up = audio->m_Attributes.up;
+
+                fmodSystem->setListenerAttributes(0, &audio->m_ListenerAttributes);
 
                 //Get gas pedal
                 float gasPedal = abs(vehicle->m_fGasPedal);

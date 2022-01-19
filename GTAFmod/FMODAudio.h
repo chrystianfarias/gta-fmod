@@ -15,7 +15,8 @@ public:
 	FMOD::Studio::EventInstance* m_GearEventInstance;
 	FMOD_STUDIO_PARAMETER_DESCRIPTION m_RpmDesc;
 	FMOD_STUDIO_PARAMETER_DESCRIPTION m_LoadDesc;
-	FMOD_3D_ATTRIBUTES m_Attributes;
+    FMOD_3D_ATTRIBUTES m_Attributes;
+    FMOD_3D_ATTRIBUTES m_ListenerAttributes;
 
     void LoadBank(FMOD::Studio::System* fmodSystem, char* bank, char* absolutePath);
 

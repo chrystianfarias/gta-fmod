@@ -38,14 +38,16 @@ void FMODAudio::LoadBank(FMOD::Studio::System* fmodSystem, char* bank, char* abs
 
     //Set 3D space
     m_RpmEventInstance->setVolume(.4);
+    m_RpmEventInstance->setReverbLevel(0, 2);
     m_RpmEventInstance->set3DAttributes(&m_Attributes);
     m_RpmEventInstance->setParameterByID(m_RpmDesc.id, 0.0f);
     m_RpmEventInstance->setParameterByID(m_LoadDesc.id, 1.0f);
 
-    m_Attributes = { { 0 } };
-    m_Attributes.forward.z = 1.0f;
-    m_Attributes.up.y = 1.0f;
-    CheckError(fmodSystem->setListenerAttributes(0, &m_Attributes), "Failed on set 3d ambient");
+    m_ListenerAttributes = { { 0 } };
+    m_ListenerAttributes.forward.x = 1.0f;
+    m_ListenerAttributes.up.z = 1.0f;
+
+    CheckError(fmodSystem->setListenerAttributes(0, &m_ListenerAttributes), "Failed on set 3d ambient");
 
     m_bIsLoaded = true;
 }
