@@ -22,33 +22,19 @@ using namespace plugin;
 int m_nLastSpawnedTime;
 FMOD::Studio::System* fmodSystem = NULL;
 FMODAudio* audios[600];
+FMODAudio* audio;
 std::map<CVehicle*, FMODAudio*> audioInstance;
 CVehicle* lastVehicle;
 INIConfig* iniConfig;
 
 int nLastGearChangeTime = 0;
-float fClutch = 0;
 float fRPM = 800;
 int nGear = 0;
 int nTargetGear = 1;
 float fLastPedal = 0;
-bool bEngineState = true;
-bool bFmodBusy = false;
 int nLastId = -1;
+float nLastEngineAccel;
 
-void CAEVehicleAudioEntity__StoppedUsingBankSlot(int id)
-{
-    return ((void(__cdecl*)(int))0x4F4DF0)(id);
-}
-void CVehicle__CancelVehicleEngineSound(CAEVehicleAudioEntity* _this, int soundId)
-{
-    return ((void(__thiscall*)(CAEVehicleAudioEntity*, int))0x4F55C0)(_this, soundId);
-}
-void TurnEngine(CVehicle* v, bool value)
-{
-    bEngineState = value;
-    ((void(__thiscall*)(CVehicle*, bool))0x41BDD0)(v, value);
-}
 static bool CamNoRain()
 {
     return ((bool(__thiscall*)())0x72DDB0)();
@@ -63,7 +49,6 @@ public:
     }
     static void InitializeFmod()
     {
-
         void* extraDriverData = NULL;
         FMODAudio::CheckError(FMOD::Studio::System::create(&fmodSystem), "Failed on create FMOD System");
 
@@ -86,39 +71,6 @@ public:
         FMOD::Studio::Bank* stringsBank = NULL;
         FMODAudio::CheckError(fmodSystem->loadBankFile(PLUGIN_PATH((char*)"banks\\common.strings.bank"), FMOD_STUDIO_LOAD_BANK_NORMAL, &stringsBank), "Failed on load bank Master String");
     }
-    static void PrevGear()
-    {
-        nTargetGear -= 1;
-        if (nTargetGear < -1)
-            nTargetGear = -1;
-        
-        if (nGear != nTargetGear)
-        {
-            nLastGearChangeTime = CTimer::m_snTimeInMilliseconds;
-            fClutch = 1;
-        }
-    }
-    static void SetToGear(int gear)
-    {
-        nTargetGear = gear;
-        if (nGear != nTargetGear)
-        {
-            nLastGearChangeTime = CTimer::m_snTimeInMilliseconds;
-            fClutch = 1;
-        }
-    }
-    static void NextGear()
-    {
-        nTargetGear += 1;
-        if (nTargetGear > 5)
-            nTargetGear = 5;
-
-        if (nGear != nTargetGear)
-        {
-            nLastGearChangeTime = CTimer::m_snTimeInMilliseconds;
-            fClutch = 1;
-        }
-    }
     static void SetIndexFMODBank(int id, char* bank, char* absolutePath)
     {
         StopCurrentAudio();
@@ -132,7 +84,6 @@ public:
     {
         if (vehicle == NULL)
             return;
-        bFmodBusy = true;
 
         StopCurrentAudio();
         if (audioInstance[vehicle] == NULL)
@@ -144,8 +95,6 @@ public:
         audio->LoadBank(fmodSystem, bank, absolutePath);
 
         audioInstance[vehicle] = audio;
-
-        bFmodBusy = false;
     }
     static void StopCurrentAudio()
     {
@@ -171,304 +120,222 @@ public:
             nLastId = -1;
         }
     }
+    static void _stdcall OnExitVehicle()
+    {
+        CVehicle* veh = FindPlayerVehicle(-1, true);
+        if (!veh)
+        {
+            StopCurrentAudio();
+        }
+    }
+    static void _stdcall OnEnterVehicle()
+    {
+        lastVehicle = FindPlayerVehicle(-1, true);
 
-    GTAFmod() {
-        //Initialize FMOD on game start
-        Events::initGameEvent.after.Add(LoadConfigs);
-
-        //Update FMOD
-        Events::gameProcessEvent += [](){
-            //Torque Curve
-            CVector2D points[] = {
-                CVector2D(iniConfig->m_fMinRPM, iniConfig->m_fMinRPMTorque),
-                CVector2D(iniConfig->m_fMidRPM, iniConfig->m_fMidRPMTorque),
-                CVector2D(iniConfig->m_fFinalRPM, iniConfig->m_fFinalRPMTorque)
-            };
-            Curve torqueCurve = Curve(points);
-
-            //Find Vehicle
-            CVehicle* vehicle = FindPlayerVehicle(-1, true);
-            CAutomobile* automobile = reinterpret_cast<CAutomobile*>(vehicle);
-
-            if (vehicle && vehicle->m_nVehicleSubClass != VEHICLE_PLANE && vehicle->m_nVehicleSubClass != VEHICLE_HELI
-                && vehicle->m_nVehicleSubClass != VEHICLE_BOAT && vehicle->m_nVehicleSubClass != VEHICLE_BMX &&
-                vehicle->m_nVehicleSubClass != VEHICLE_TRAIN && CTimer::m_UserPause == false)
+        if (lastVehicle)
+        {
+            //Try with instance
+            audio = audioInstance[lastVehicle];
+            //Try with model index
+            if (audio == NULL)
             {
-                if (bFmodBusy)
-                    return;
+                nLastId = lastVehicle->m_nModelIndex;
+                audio = audios[nLastId];
+            }
+            //Try with sound bank
+            if (audio == NULL)
+            {
+                nLastId = lastVehicle->m_vehicleAudio.m_nEngineAccelerateSoundBankId;
+                audio = audios[nLastId];
+            }
+            
+            if (audio == NULL)
+            {
+                nLastId = lastVehicle->m_vehicleAudio.m_nEngineAccelerateSoundBankId;
+                std::string section = "Bank" + std::to_string(nLastId);
+                std::string sectionId = "Id" + std::to_string(lastVehicle->m_nModelIndex);
+                CIniReader ini("banks\\banks.ini");
+                std::string defaultBank = ini.ReadString("EngineBanks", "Default", "");
+                std::string custom = ini.ReadString("CarBanks", sectionId, "");
+                std::string bank = ini.ReadString("EngineBanks", section, defaultBank);
+                std::string path = "banks\\" + bank + ".bank";
+                std::string customPath = "banks\\" + custom + ".bank";
 
-                nLastId = -1;
-                //Try with instance
-                FMODAudio* audio = audioInstance[vehicle];
-                //Try with model index
-                if (audio == NULL)
+                audio = new FMODAudio();
+                //Load INI
+                if (custom.empty())
                 {
-                    nLastId = vehicle->m_nModelIndex;
-                    audio = audios[nLastId];
-                }
-                //Try with sound bank
-                if (audio == NULL)
-                {
-                    nLastId = vehicle->m_vehicleAudio.m_nEngineAccelerateSoundBankId;
-                    audio = audios[nLastId];
-                }
-
-                if (audio == NULL)
-                {
-                    nLastId = vehicle->m_vehicleAudio.m_nEngineAccelerateSoundBankId;
-                    std::string section = "Bank" + std::to_string(nLastId);
-                    std::string sectionId = "Id" + std::to_string(vehicle->m_nModelIndex);
-                    CIniReader ini("banks\\banks.ini");
-                    std::string defaultBank = ini.ReadString("EngineBanks", "Default", "");
-                    std::string custom = ini.ReadString("CarBanks", sectionId, "");
-                    std::string bank = ini.ReadString("EngineBanks", section, defaultBank);
-                    std::string path = "banks\\" + bank + ".bank";
-                    std::string customPath = "banks\\" + custom + ".bank";
-
-                    audio = new FMODAudio();
-                    //Load INI
-                    if (custom.empty())
-                    {
-                        audio->LoadBank(fmodSystem, (char*)bank.c_str(), PLUGIN_PATH((char*)path.c_str()));
-                    }
-                    else
-                    {
-                        audio->LoadBank(fmodSystem, (char*)custom.c_str(), PLUGIN_PATH((char*)customPath.c_str()));
-                        nLastId = vehicle->m_nModelIndex;
-                    }
-
-                    audios[nLastId] = audio;
-                }
-                if (audio->m_bIsLoaded == false)
-                {
-                    return;
-                }
-                if (audio->m_bIsPlaying == false)
-                {
-                    fRPM = 800;
-                    audio->m_RpmEventInstance->start();
-                    audio->m_bIsPlaying = true;
-                }
-
-                //Set 3D space position
-                CVector camPos = TheCamera.GetPosition();
-                CVector vehiclePos = vehicle->GetPosition();
-                CVector pos = vehiclePos - camPos;
-                CVector dirFor;
-                CVector dirUp;
-                CVector offsetFor = CVector(0, -1, 0);
-                CVector offsetUp = CVector(0, 0, 1);
-                CMatrix* matrix = vehicle->m_matrix;
-                RwV3dTransformPoint((RwV3d*)&dirFor, (RwV3d*)&offsetFor, (RwMatrix*)matrix);
-                RwV3dTransformPoint((RwV3d*)&dirUp, (RwV3d*)&offsetUp, (RwMatrix*)matrix);
-                
-                audio->m_Attributes.position.x = vehiclePos.x;
-                audio->m_Attributes.position.y = vehiclePos.y;
-                audio->m_Attributes.position.z = vehiclePos.z;
-                audio->m_Attributes.velocity.x = vehicle->m_vecMoveSpeed.x;
-                audio->m_Attributes.velocity.y = vehicle->m_vecMoveSpeed.y;
-                audio->m_Attributes.velocity.z = vehicle->m_vecMoveSpeed.z;
-
-                audio->m_Attributes.forward.x = dirFor.x - vehiclePos.x;
-                audio->m_Attributes.forward.y = dirFor.y - vehiclePos.y;
-                audio->m_Attributes.forward.z = dirFor.z - vehiclePos.z;
-                audio->m_Attributes.up.x = dirUp.x - vehiclePos.x;
-                audio->m_Attributes.up.y = dirUp.y - vehiclePos.y;
-                audio->m_Attributes.up.z = dirUp.z - vehiclePos.z;
-                
-                FMOD::ChannelGroup* grp;
-                audio->m_RpmEventInstance->getChannelGroup(&grp);
-                grp->setReverbProperties(0, CamNoRain() ? 1.0 : 0.0);
-
-                audio->m_RpmEventInstance->set3DAttributes(&audio->m_Attributes);
-                audio->m_BackFireEventInstance->set3DAttributes(&audio->m_Attributes);
-                audio->m_GearEventInstance->set3DAttributes(&audio->m_Attributes);
-
-                audio->m_ListenerAttributes.position.x = camPos.x;
-                audio->m_ListenerAttributes.position.y = camPos.y;
-                audio->m_ListenerAttributes.position.z = camPos.z;
-                audio->m_ListenerAttributes.forward = audio->m_Attributes.forward;
-                audio->m_ListenerAttributes.up = audio->m_Attributes.up;
-
-                fmodSystem->setListenerAttributes(0, &audio->m_ListenerAttributes);
-
-                //Get gas pedal
-                float gasPedal = abs(vehicle->m_fGasPedal);
-
-                //Gear change time
-                if (CTimer::m_snTimeInMilliseconds < (nLastGearChangeTime + 800))
-                {
-                    gasPedal = 0;
-                }
-                if (CTimer::m_snTimeInMilliseconds >= (nLastGearChangeTime + 800))
-                {
-                    if (nGear != nTargetGear)
-                    {
-                        audio->m_GearEventInstance->start();
-                    }
-                    nGear = nTargetGear;
-                    fClutch = 0;
-                    gasPedal = abs(vehicle->m_fGasPedal);
-                }
-                //Clutch Key
-                if (KeyPressed(iniConfig->m_nClutchGearKey))
-                {
-                    fClutch = 1;
-                }
-
-                //Remove Vehicle default Sound
-                vehicle->m_vehicleAudio.m_nEngineState = -1;
-
-                //Gear relation
-                float relation[] = {
-                    iniConfig->m_fRalationR,
-                    iniConfig->m_fRalationN,
-                    iniConfig->m_fRalation1,
-                    iniConfig->m_fRalation2,
-                    iniConfig->m_fRalation3,
-                    iniConfig->m_fRalation4,
-                    iniConfig->m_fRalation5
-                };
-
-                //Calculate Speed
-                float speed = vehicle->m_vecMoveSpeed.Magnitude() * 175;
-
-                //Calculate target RPM
-                float targetRpm = 400 + (vehicle->m_vecMoveSpeed.Magnitude() * abs(relation[nGear + 1])) * (iniConfig->m_fFinalRPM - 2000);
-
-                //If Neutral (0) is equals clutch
-                if (nGear == 0 || automobile->m_nWheelsOnGround == 0)
-                    fClutch = 1;
-
-                if (fClutch > 0)
-                {
-                    fRPM += (gasPedal * CTimer::ms_fTimeStep) * 200 * fClutch;
-                    if (fRPM > torqueCurve.maxX)
-                    {
-                        fRPM = torqueCurve.maxX;
-                    }
-                    if (gasPedal == 0 && fRPM > 800)
-                    {
-                        fRPM -= (CTimer::ms_fTimeStep) * 20;
-                    }
+                    audio->LoadBank(fmodSystem, (char*)bank.c_str(), PLUGIN_PATH((char*)path.c_str()));
                 }
                 else
                 {
-                    if (fRPM < targetRpm)
-                    {
-                        fRPM += (CTimer::ms_fTimeStep) * iniConfig->m_fRPMAcceleration;
-                        if (iniConfig->m_bDamageWhenShiftingWrong)
-                        {
-                            if (fRPM > torqueCurve.maxX + iniConfig->m_fMaxRPMDamage)
-                            {
-                                vehicle->m_fHealth -= (CTimer::ms_fTimeStep) * iniConfig->m_fDamageMultiply;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        fRPM -= (CTimer::ms_fTimeStep) *iniConfig->m_fRPMDesaceleration;
-                    }
-                }
-                //Engine off if RPM is less than 300
-                /*if (fRPM < 300 && fClutch == 0 && engineState == true)
-                {
-                    TurnEngine(vehicle, false);
-                    CHud::SetHelpMessage("Engine OFF", true, false, false);
-                }*/
-                //Next Gear Key
-                if (KeyPressed(iniConfig->m_nUpGearKey) && CTimer::m_snTimeInMilliseconds > (nLastGearChangeTime + 200))
-                {
-                    NextGear();
-                }
-                //Prev Gear
-                if (KeyPressed(iniConfig->m_nDownGearKey) && CTimer::m_snTimeInMilliseconds > (nLastGearChangeTime + 200))
-                {
-                    PrevGear();
-                }
-                //Engine on/off Key
-                /*if (KeyPressed(VK_F8) && CTimer::m_snTimeInMilliseconds > (m_nLastSpawnedTime + 2000))
-                {
-                    if (engineState == false)
-                    {
-                        TurnEngine(vehicle, true);
-                        CHud::SetHelpMessage("Engine: ON", true, false, false);
-                    }
-                    else
-                    {
-                        TurnEngine(vehicle, false);
-                        CHud::SetHelpMessage("Engine: OFF", true, false, false);
-                    }
-                    m_nLastSpawnedTime = CTimer::m_snTimeInMilliseconds;
-                }*/
-                //Automatic Gearbox 
-                if (iniConfig->m_bAutomaticGearbox)
-                {
-                    if (nGear < 5 && fRPM > 6500 && CTimer::m_snTimeInMilliseconds > (nLastGearChangeTime + 800) && fClutch == 0)
-                    {
-                        NextGear();
-                    }
-                    if (nTargetGear > 1 && fRPM < 3000 && fClutch == 0)
-                    {
-                        PrevGear();
-                    }
+                    audio->LoadBank(fmodSystem, (char*)custom.c_str(), PLUGIN_PATH((char*)customPath.c_str()));
+                    nLastId = lastVehicle->m_nModelIndex;
                 }
 
-                //Evaluate Torque Curve
-                float torqueBias = torqueCurve.Evaluate(fRPM) * 0.002;
-                if (fRPM > torqueCurve.maxX)
-                {
-                    torqueBias = -0.1 * (fRPM / iniConfig->m_fFinalRPM);
-                }
-                if (nGear == -1)
-                {
-                    if (torqueBias > 0)
-                        torqueBias *= -1;
-                }
-                //Set engine acceleration
-                vehicle->m_pHandlingData->m_transmissionData.m_fEngineAcceleration = (torqueBias * (1 - fClutch)) * gasPedal * (vehicle->m_fHealth / 1000);
-               
-                //Clamp RPM sound
-                float soundRpm = fRPM * iniConfig->m_fPitchMultiply;
-                if (soundRpm < iniConfig->m_fMinRPM)
-                {
-                    soundRpm = iniConfig->m_fMinRPM;
-                }
-                if (soundRpm > iniConfig->m_fFinalRPM + 1000)
-                {
-                    soundRpm = iniConfig->m_fFinalRPM + 1000;
-                }
-                if (bEngineState == false)
-                    soundRpm = 0;
+                audios[nLastId] = audio;
+            }
+            if (audio->m_bIsLoaded == false)
+            {
+                return;
+            }
+            if (audio->m_bIsPlaying == false)
+            {
+                fRPM = 800;
+                audio->m_RpmEventInstance->start();
+                audio->m_bIsPlaying = true;
+            }
+        }
+    }
+    static void _stdcall ProcessVehicleEngine(cVehicleParams* params)
+    {
+        if (lastVehicle && !CTimer::m_UserPause && audio)
+        {
+            //Set 3D space position
+            CVector camPos = TheCamera.GetPosition();
+            CVector vehiclePos = lastVehicle->GetPosition();
+            CVector dirFor;
+            CVector dirUp;
+            CVector offsetFor = CVector(0, -1, 0);
+            CVector offsetUp = CVector(0, 0, 1);
+            CMatrix* matrix = lastVehicle->m_matrix;
+            RwV3dTransformPoint((RwV3d*)&dirFor, (RwV3d*)&offsetFor, (RwMatrix*)matrix);
+            RwV3dTransformPoint((RwV3d*)&dirUp, (RwV3d*)&offsetUp, (RwMatrix*)matrix);
 
-                //Set FMOD parameters
-                audio->m_RpmEventInstance->setParameterByID(audio->m_RpmDesc.id, soundRpm);
-                audio->m_RpmEventInstance->setParameterByID(audio->m_LoadDesc.id, -1 + (gasPedal * 2));
+            audio->m_Attributes.position.x = vehiclePos.x;
+            audio->m_Attributes.position.y = vehiclePos.y;
+            audio->m_Attributes.position.z = vehiclePos.z;
+            audio->m_Attributes.velocity.x = lastVehicle->m_vecMoveSpeed.x;
+            audio->m_Attributes.velocity.y = lastVehicle->m_vecMoveSpeed.y;
+            audio->m_Attributes.velocity.z = lastVehicle->m_vecMoveSpeed.z;
 
-                //CMessages::AddMessageJumpQWithNumber(new char[] {"RPM ~1~ Gear ~1~ G ~1~"}, 3000, 0, lastId, soundRpm, fRPM, 0, 0, 0, false);
+            audio->m_Attributes.forward.x = dirFor.x - vehiclePos.x;
+            audio->m_Attributes.forward.y = dirFor.y - vehiclePos.y;
+            audio->m_Attributes.forward.z = dirFor.z - vehiclePos.z;
+            audio->m_Attributes.up.x = dirUp.x - vehiclePos.x;
+            audio->m_Attributes.up.y = dirUp.y - vehiclePos.y;
+            audio->m_Attributes.up.z = dirUp.z - vehiclePos.z;
 
-                //Backfire event
-                if (gasPedal != fLastPedal)
+            FMOD::ChannelGroup* grp;
+            audio->m_RpmEventInstance->getChannelGroup(&grp);
+            grp->setReverbProperties(0, CamNoRain() ? 1.0 : 0.0);
+
+            audio->m_RpmEventInstance->set3DAttributes(&audio->m_Attributes);
+            audio->m_BackFireEventInstance->set3DAttributes(&audio->m_Attributes);
+            audio->m_GearEventInstance->set3DAttributes(&audio->m_Attributes);
+
+            audio->m_ListenerAttributes.position.x = camPos.x;
+            audio->m_ListenerAttributes.position.y = camPos.y;
+            audio->m_ListenerAttributes.position.z = camPos.z;
+            audio->m_ListenerAttributes.forward = audio->m_Attributes.forward;
+            audio->m_ListenerAttributes.up = audio->m_Attributes.up;
+
+            fmodSystem->setListenerAttributes(0, &audio->m_ListenerAttributes);
+
+            //Get gas pedal
+            float gasPedal = abs(lastVehicle->m_fGasPedal);
+            CAutomobile* automobile = reinterpret_cast<CAutomobile*>(lastVehicle);
+            bool clutch = automobile->m_nWheelsOnGround == 0;
+
+            //Gear change time
+            if (CTimer::m_snTimeInMilliseconds < (nLastGearChangeTime + 500))
+            {
+                clutch = true;
+                gasPedal = 0;
+            }
+            if (CTimer::m_snTimeInMilliseconds >= (nLastGearChangeTime + 500))
+            {
+                if (nGear != nTargetGear)
                 {
-                    if (gasPedal == 0)
-                    {
-                        if (fRPM > 5000 && CTimer::m_snTimeInMilliseconds > (m_nLastSpawnedTime + 1000))
-                        {
-                            audio->m_BackFireEventInstance->start();
-                            m_nLastSpawnedTime = CTimer::m_snTimeInMilliseconds;
-                        }
-                    }
+                    audio->m_GearEventInstance->start();
                 }
-                lastVehicle = vehicle;
-                fLastPedal = gasPedal;
+                nGear = nTargetGear;
+            }
+            if (nTargetGear != lastVehicle->m_nCurrentGear)
+            {
+                nTargetGear = lastVehicle->m_nCurrentGear;
+                nLastGearChangeTime = CTimer::m_snTimeInMilliseconds;
+            }
 
-                //Update FMOD
-                FMODAudio::CheckError(fmodSystem->update(), "Update Failed");
+            //Gear relation
+            float relation[] = {
+                iniConfig->m_fRalationR,
+                iniConfig->m_fRalation1,
+                iniConfig->m_fRalation2,
+                iniConfig->m_fRalation3,
+                iniConfig->m_fRalation4,
+                iniConfig->m_fRalation5
+            };
+
+            //Calculate target RPM
+            float targetRpm = 400 + (lastVehicle->m_vecMoveSpeed.Magnitude() * abs(relation[nGear])) * (iniConfig->m_fFinalRPM - 1500);
+
+            if (clutch > 0)
+            {
+                fRPM += (gasPedal * CTimer::ms_fTimeStep) * 200 * clutch;
+                if (fRPM > iniConfig->m_fFinalRPM)
+                {
+                    fRPM = iniConfig->m_fFinalRPM;
+                }
+                if (gasPedal == 0 && fRPM > 800)
+                {
+                    fRPM -= (CTimer::ms_fTimeStep) * 20;
+                }
             }
             else
             {
-                StopCurrentAudio();
+                if (fRPM < targetRpm)
+                {
+                    fRPM += (CTimer::ms_fTimeStep)*iniConfig->m_fRPMAcceleration;
+                }
+                else
+                {
+                    fRPM -= (CTimer::ms_fTimeStep)*iniConfig->m_fRPMDesaceleration;
+                }
             }
+
+            //Set FMOD parameters
+            audio->m_RpmEventInstance->setParameterByID(audio->m_RpmDesc.id, fRPM);
+            audio->m_RpmEventInstance->setParameterByID(audio->m_LoadDesc.id, -1 + (gasPedal * 2));
+
+            //Backfire event
+            if (gasPedal != fLastPedal)
+            {
+                if (gasPedal == 0)
+                {
+                    if (fRPM > 5000 && CTimer::m_snTimeInMilliseconds > (m_nLastSpawnedTime + 1000))
+                    {
+                        audio->m_BackFireEventInstance->start();
+                        m_nLastSpawnedTime = CTimer::m_snTimeInMilliseconds;
+                    }
+                }
+            }
+            fLastPedal = gasPedal;
+        }
+    }
+
+    GTAFmod() {
+        //Replace Engine Events
+        patch::ReplaceFunctionCall(0x5021C2, ProcessVehicleEngine);
+        patch::ReplaceFunctionCall(0x501FD6, ProcessVehicleEngine);
+
+        //OnEnterVehicle Event
+        injector::MakeCALL(0x64BBC4, OnEnterVehicle);
+
+        //OnExitVehicle Event
+        injector::MakeCALL(0x647D52, OnExitVehicle);
+
+        //Initialize FMOD on game start
+        Events::initGameEvent.after.Add(LoadConfigs);
+
+        //Update FMOD on game Process
+        Events::gameProcessEvent += []() {
+            if (audio)
+            {
+                audio->m_RpmEventInstance->setVolume(CTimer::m_UserPause ? 0.0 : 0.4);
+            }
+            //Update FMOD
+            FMODAudio::CheckError(fmodSystem->update(), "Update Failed");
         };
     }
 } gTAFmod;
@@ -482,19 +349,6 @@ extern "C" int __declspec(dllexport) Ext_GetCurrentGear()
 {
     return nGear;
 }
-extern "C" void __declspec(dllexport) Ext_SetCurrentGear(int gear)
-{
-    return GTAFmod::SetToGear(gear);
-}
-extern "C" void __declspec(dllexport) Ext_SetClutchValue(float value)
-{
-    fClutch = value;
-}
-extern "C" float __declspec(dllexport) Ext_GetClutchValue()
-{
-    return fClutch;
-}
-
 extern "C" void __declspec(dllexport) Ext_SetEngineSoundIdFMODBank(int id, char* bank, char* absolutePath)
 {
     return GTAFmod::SetIndexFMODBank(id, bank, absolutePath);
