@@ -189,6 +189,7 @@ public:
     }
     static void _stdcall ProcessVehicleEngine(cVehicleParams* params)
     {
+        
         if (lastVehicle && !CTimer::m_UserPause && audio)
         {
             //Set 3D space position
@@ -257,27 +258,30 @@ public:
                 nLastGearChangeTime = CTimer::m_snTimeInMilliseconds;
             }
 
-            //Gear relation
-            float relation[] = {
-                iniConfig->m_fRalationR,
-                iniConfig->m_fRalation1,
-                iniConfig->m_fRalation2,
-                iniConfig->m_fRalation3,
-                iniConfig->m_fRalation4,
-                iniConfig->m_fRalation5
-            };
-
-            //Calculate target RPM
-            float targetRpm = 400 + (lastVehicle->m_vecMoveSpeed.Magnitude() * abs(relation[nGear])) * (iniConfig->m_fFinalRPM - 1500);
+            //Calculate target RPM 
+            float speed = fabs(params->m_fVelocity);
+            float ratio = (speed- params->m_pTransmission->m_aGears[nGear].m_fChangeDownVelocity)
+                / (*(float*)&params->m_pTransmission->m_aGears[nGear].m_fMaxVelocity
+                    - params->m_pTransmission->m_aGears[nGear].m_fChangeDownVelocity);
+            if (ratio > 1.0 || ratio >= 0.0)
+            {
+                if (ratio > 1.0)
+                    ratio = 1.0;
+            }
+            else
+            {
+                ratio = 0.0;
+            }
+            float targetRpm = iniConfig->m_fMinRPM + (iniConfig->m_fMaxRPM * ratio);
 
             if (clutch > 0)
             {
                 fRPM += (gasPedal * CTimer::ms_fTimeStep) * 200 * clutch;
-                if (fRPM > iniConfig->m_fFinalRPM)
+                if (fRPM > iniConfig->m_fMaxRPM)
                 {
-                    fRPM = iniConfig->m_fFinalRPM;
+                    fRPM = iniConfig->m_fMaxRPM;
                 }
-                if (gasPedal == 0 && fRPM > 800)
+                if (gasPedal == 0 && fRPM > iniConfig->m_fMinRPM)
                 {
                     fRPM -= (CTimer::ms_fTimeStep) * 20;
                 }
