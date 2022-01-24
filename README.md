@@ -15,5 +15,5 @@ This project uses [plugin-sdk](https://github.com/DK22Pac/plugin-sdk).
 ## Develop
   See [wiki page](https://github.com/chrystianfarias/gta-fmod/wiki).
 
-##Licence
-Audio Engine: FMOD Studio by Firelight Technologies Pty Ltd.
+## Licence
+  Audio Engine: FMOD Studio by Firelight Technologies Pty Ltd.
