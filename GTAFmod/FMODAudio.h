@@ -12,7 +12,6 @@ public:
     bool m_bIsLoaded = false;
     bool m_bIsPlaying = false;
     FMOD::Studio::EventInstance* m_RpmEventInstance;
-    FMOD::Studio::EventInstance* m_RpmLimiterEventInstance;
 	FMOD::Studio::EventInstance* m_BackFireEventInstance;
 	FMOD::Studio::EventInstance* m_GearEventInstance;
 	FMOD_STUDIO_PARAMETER_DESCRIPTION m_RpmDesc;

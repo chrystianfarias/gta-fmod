@@ -131,7 +131,6 @@ public:
             {
                 FMODAudio* audio = audioInstance[lastVehicle];
                 audio->m_RpmEventInstance->stop(FMOD_STUDIO_STOP_IMMEDIATE);
-                audio->m_RpmLimiterEventInstance->stop(FMOD_STUDIO_STOP_IMMEDIATE);
                 audio->m_bIsPlaying = false;
                 FMODAudio::CheckError(fmodSystem->update(), "Update Failed");
                 lastVehicle = NULL;
@@ -143,7 +142,6 @@ public:
         {
             FMODAudio* audio = audios[nLastId];
             audio->m_RpmEventInstance->stop(FMOD_STUDIO_STOP_IMMEDIATE);
-            audio->m_RpmLimiterEventInstance->stop(FMOD_STUDIO_STOP_IMMEDIATE);
             audio->m_bIsPlaying = false;
             FMODAudio::CheckError(fmodSystem->update(), "Update Failed");
             nLastId = -1;
@@ -212,7 +210,6 @@ public:
             {
                 fRPM = iniConfig->m_fMinRPM;
                 audio->m_RpmEventInstance->start();
-                audio->m_RpmLimiterEventInstance->start();
                 audio->m_bIsPlaying = true;
             }
         }
@@ -286,7 +283,6 @@ public:
             grp->setReverbProperties(0, CamNoRain() ? 1.0 : 0.0);
 
             audio->m_RpmEventInstance->set3DAttributes(&audio->m_Attributes);
-            audio->m_RpmLimiterEventInstance->set3DAttributes(&audio->m_Attributes);
             audio->m_BackFireEventInstance->set3DAttributes(&audio->m_Attributes);
             audio->m_GearEventInstance->set3DAttributes(&audio->m_Attributes);
 
@@ -359,10 +355,7 @@ public:
             audio->m_RpmEventInstance->setParameterByID(audio->m_RpmDesc.id, fRPM);
             audio->m_RpmEventInstance->setParameterByID(audio->m_LoadDesc.id, -1 + (gasPedal * 2));
 
-            //Limiter event
-            audio->m_RpmLimiterEventInstance->setVolume(fRPM >= iniConfig->m_fMaxRPM - 500 ? iniConfig->m_fVolume * 10 : 0);
-
-            if (clutch > 0 && fRPM >= iniConfig->m_fMaxRPM - 1000)
+            if (clutch > 0 && fRPM >= iniConfig->m_fMaxRPM)
             {
                 Backfire();
             }

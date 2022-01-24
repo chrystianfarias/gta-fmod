@@ -17,9 +17,6 @@ void FMODAudio::LoadBank(FMOD::Studio::System* fmodSystem, INIConfig* ini, char*
     FMOD::Studio::EventDescription* rpmEventDescription = NULL;
     CheckError(fmodSystem->getEvent((event + "/engine_ext").c_str(), &rpmEventDescription), "Failed on get event");
 
-    FMOD::Studio::EventDescription* rpmLimiterEventDescription = NULL;
-    CheckError(fmodSystem->getEvent((event + "/limiter").c_str(), &rpmLimiterEventDescription), "Failed on get event");
-
     FMOD::Studio::EventDescription* backFireEventDescription = NULL;
     CheckError(fmodSystem->getEvent((event + "/backfire_ext").c_str(), &backFireEventDescription), "Failed on get event");
 
@@ -28,9 +25,6 @@ void FMODAudio::LoadBank(FMOD::Studio::System* fmodSystem, INIConfig* ini, char*
 
     //RPM Instance
     CheckError(rpmEventDescription->createInstance(&m_RpmEventInstance), "Failed on create instance");
-
-    //RPM Limiter Instance
-    CheckError(rpmLimiterEventDescription->createInstance(&m_RpmLimiterEventInstance), "Failed on create instance");
 
     //Backfire Instance
     CheckError(backFireEventDescription->createInstance(&m_BackFireEventInstance), "Failed on create instance");
@@ -46,9 +40,6 @@ void FMODAudio::LoadBank(FMOD::Studio::System* fmodSystem, INIConfig* ini, char*
     m_RpmEventInstance->setVolume(ini->m_fVolume);
     m_RpmEventInstance->setReverbLevel(0, 2);
     m_RpmEventInstance->set3DAttributes(&m_Attributes);
-    m_RpmLimiterEventInstance->setVolume(0);
-    m_RpmLimiterEventInstance->setReverbLevel(0, 2);
-    m_RpmLimiterEventInstance->set3DAttributes(&m_Attributes);
 
     m_RpmEventInstance->setParameterByID(m_RpmDesc.id, 0.0f);
     m_RpmEventInstance->setParameterByID(m_LoadDesc.id, 1.0f);
