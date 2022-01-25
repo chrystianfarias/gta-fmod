@@ -22,9 +22,9 @@ using namespace plugin;
 
 int m_nLastSpawnedTime;
 FMOD::Studio::System* fmodSystem = NULL;
-FMODAudio* audios[600];
 FMODAudio* audio;
 std::map<CVehicle*, FMODAudio*> audioInstance;
+std::map<int, FMODAudio*> audios;
 CVehicle* lastVehicle;
 INIConfig* iniConfig;
 
@@ -105,7 +105,7 @@ public:
         FMODAudio* audio = new FMODAudio();
         audio->LoadBank(fmodSystem, iniConfig, bank, absolutePath);
 
-        audios[id] = audio;
+        audios.insert(std::make_pair(id, audio));
     }
     static void SetVehicleFMODBank(CVehicle* vehicle, char* bank, char* absolutePath)
     {
@@ -200,6 +200,7 @@ public:
                     nLastId = lastVehicle->m_nModelIndex;
                 }
 
+                audios.insert(std::make_pair(nLastId, audio));
                 audios[nLastId] = audio;
             }
             if (audio->m_bIsLoaded == false)
@@ -214,9 +215,9 @@ public:
             }
         }
     }
-    static void Backfire()
+    static void Backfire(float time)
     {
-        if (fRPM > 5000 && CTimer::m_snTimeInMilliseconds > (m_nLastSpawnedTime + 300))
+        if (fRPM > 5200 && CTimer::m_snTimeInMilliseconds > (m_nLastSpawnedTime + time))
         {
             audio->m_BackFireEventInstance->start();
             m_nLastSpawnedTime = CTimer::m_snTimeInMilliseconds;
@@ -231,11 +232,10 @@ public:
             cTransmission* m_pTransmission = &lastVehicle->m_pHandlingData->m_transmissionData;
             float velocity = fabs(params->m_fVelocity);
             params->m_nCurrentGear = lastVehicle->m_nCurrentGear;
-            int m_nCurrentGear = params->m_nCurrentGear;
             params->m_bHandbrakeOn = lastVehicle->m_nVehicleFlags.bIsHandbrakeOn;
-            float currentRatio = (velocity - m_pTransmission->m_aGears[m_nCurrentGear].m_fChangeDownVelocity)
-                / (*(float*)&m_pTransmission->m_aGears[m_nCurrentGear].m_fMaxVelocity
-                    - m_pTransmission->m_aGears[m_nCurrentGear].m_fChangeDownVelocity);
+            float currentRatio = (velocity - m_pTransmission->m_aGears[nGear].m_fChangeDownVelocity)
+                / (*(float*)&m_pTransmission->m_aGears[nGear].m_fMaxVelocity
+                    - m_pTransmission->m_aGears[nGear].m_fChangeDownVelocity);
             if (currentRatio > 1.0 || currentRatio >= 0.0)
             {
                 if (currentRatio > 1.0)
@@ -247,7 +247,7 @@ public:
             }
             params->m_fVelocityChangingPercentage = currentRatio;
 
-            if (!m_nCurrentGear)
+            if (!nGear)
                 params->m_fVelocityChangingPercentage = 0.0;
            
             //Calculate target RPM 
@@ -300,12 +300,12 @@ public:
             bool clutch = automobile->m_nWheelsOnGround == 0 || params->m_bHandbrakeOn || lastVehicle->m_fWheelSpinForAudio > 0.6f;
 
             //Gear change time
-            if (CTimer::m_snTimeInMilliseconds < (nLastGearChangeTime + 500))
+            if (CTimer::m_snTimeInMilliseconds < (nLastGearChangeTime + (iniConfig->m_fGearTime * 0.5)))
             {
                 clutch = true;
                 gasPedal = 0;
             }
-            if (CTimer::m_snTimeInMilliseconds >= (nLastGearChangeTime + 500))
+            if (CTimer::m_snTimeInMilliseconds >= (nLastGearChangeTime + (iniConfig->m_fGearTime * 0.5)))
             {
                 if (nGear != nTargetGear)
                 {
@@ -314,7 +314,7 @@ public:
                 }
                 nGear = nTargetGear;
             }
-            if (CTimer::m_snTimeInMilliseconds >= (nLastGearChangeTime + 800))
+            if (CTimer::m_snTimeInMilliseconds >= (nLastGearChangeTime + (iniConfig->m_fGearTime * 0.8)))
             {
                 lastVehicle->m_nVehicleFlags.bAudioChangingGear = false;
             }
@@ -328,15 +328,15 @@ public:
             {
                 if (fRPM < iniConfig->m_fMaxRPM)
                 {
-                    fRPM += (gasPedal * CTimer::ms_fTimeStep) * 200 * clutch;
+                    fRPM += (gasPedal * CTimer::ms_fTimeStep) * (iniConfig->m_fRPMAcceleration * 2) * clutch;
                 }
                 if (fRPM > iniConfig->m_fMaxRPM)
                 {
-                    fRPM -= (gasPedal * CTimer::ms_fTimeStep) * 200 * clutch;
+                    fRPM -= (gasPedal * CTimer::ms_fTimeStep) * (iniConfig->m_fRPMDesaceleration * 3) * clutch;
                 }
                 if (gasPedal == 0 && fRPM > iniConfig->m_fMinRPM)
                 {
-                    fRPM -= (CTimer::ms_fTimeStep) * 20;
+                    fRPM -= (CTimer::ms_fTimeStep) * (iniConfig->m_fRPMDesaceleration / 2);
                 }
             }
             else
@@ -345,7 +345,7 @@ public:
                 {
                     fRPM += (CTimer::ms_fTimeStep)*iniConfig->m_fRPMAcceleration;
                 }
-                else
+                if (fRPM > targetRpm)
                 {
                     fRPM -= (CTimer::ms_fTimeStep)*iniConfig->m_fRPMDesaceleration;
                 }
@@ -357,7 +357,7 @@ public:
 
             if (clutch > 0 && fRPM >= iniConfig->m_fMaxRPM)
             {
-                Backfire();
+                Backfire(250);
             }
 
             //Backfire event
@@ -365,7 +365,7 @@ public:
             {
                 if (gasPedal == 0)
                 {
-                    Backfire();
+                    Backfire(4000);
                 }
             }
             fLastPedal = gasPedal;
