@@ -1,27 +1,49 @@
 #include "plugin.h"
 #include "FMODAudio.h"
+#include "CModelInfo.h"
 #include <string>
+#include <filesystem>
 #include <game_sa/CHud.h>
 
-void FMODAudio::LoadBank(FMOD::Studio::System* fmodSystem, INIConfig* ini, char* bank, char* absolutePath)
+using std::string;
+namespace fs = std::filesystem;
+
+void FMODAudio::LoadBank(FMOD::Studio::System* fmodSystem, char* absolutePath)
 {
     m_bIsLoaded = false;
 
-    const std::string eventName = bank;
-    const std::string event = "event:/cars/" + eventName;
+    fs::path bankPath = fs::path(absolutePath);
+    string dir = bankPath.parent_path().string();
+    string modelName = bankPath.stem().string();
+    string iniPath = dir + "\\" + modelName + ".ini";
+    int maxIndex = injector::ReadMemory<uint32_t>(0x4088FB + 2, true);
+
+    m_Ini = new BankINIConfig(iniPath);
+
+    if (m_Ini->m_sEngineExtEvent == "")
+    {
+        string bnk = "INI or EngineExtEvent not found: " + iniPath + "\nFrom: " + absolutePath;
+        CheckError(FMOD_ERR_FILE_NOTFOUND, bnk.data());
+        return;
+    }
+    CBaseModelInfo* modelInfo = CModelInfo::GetModelInfo(modelName.data(), 0, maxIndex-1);
+    if (modelInfo)
+    {
+        m_Ini->m_nModelId = modelInfo->m_nObjectInfoIndex;
+    }
 
     FMOD::Studio::Bank* vehiclesBank = NULL;
     CheckError(fmodSystem->loadBankFile(absolutePath, FMOD_STUDIO_LOAD_BANK_NORMAL, &vehiclesBank), absolutePath);
 
     //Load events
     FMOD::Studio::EventDescription* rpmEventDescription = NULL;
-    CheckError(fmodSystem->getEvent((event + "/engine_ext").c_str(), &rpmEventDescription), "Failed on get event");
+    CheckError(fmodSystem->getEvent(m_Ini->m_sEngineExtEvent.c_str(), &rpmEventDescription), "Failed on get event");
 
     FMOD::Studio::EventDescription* backFireEventDescription = NULL;
-    CheckError(fmodSystem->getEvent((event + "/backfire_ext").c_str(), &backFireEventDescription), "Failed on get event");
+    CheckError(fmodSystem->getEvent(m_Ini->m_sBackfireExtEvent.c_str(), &backFireEventDescription), "Failed on get event");
 
     FMOD::Studio::EventDescription* gearEventDescription = NULL;
-    CheckError(fmodSystem->getEvent((event + "/gear_ext").c_str(), &gearEventDescription), "Failed on get event");
+    CheckError(fmodSystem->getEvent(m_Ini->m_sGearExtEvent.c_str(), &gearEventDescription), "Failed on get event");
 
     //RPM Instance
     CheckError(rpmEventDescription->createInstance(&m_RpmEventInstance), "Failed on create instance");
@@ -33,11 +55,10 @@ void FMODAudio::LoadBank(FMOD::Studio::System* fmodSystem, INIConfig* ini, char*
     CheckError(gearEventDescription->createInstance(&m_GearEventInstance), "Failed on create instance");
 
     //Get parameters
-    CheckError(rpmEventDescription->getParameterDescriptionByName("rpms", &m_RpmDesc), "Failed on get parameter");
-    CheckError(rpmEventDescription->getParameterDescriptionByName("throttle", &m_LoadDesc), "Failed on get parameter");
+    CheckError(rpmEventDescription->getParameterDescriptionByName(m_Ini->m_sRPMParameter.c_str(), &m_RpmDesc), "Failed on get parameter");
+    CheckError(rpmEventDescription->getParameterDescriptionByName(m_Ini->m_sThrottleParameter.c_str(), &m_LoadDesc), "Failed on get parameter");
 
     //Set 3D space
-    m_RpmEventInstance->setVolume(ini->m_fVolume);
     m_RpmEventInstance->setReverbLevel(0, 2);
     m_RpmEventInstance->set3DAttributes(&m_Attributes);
 

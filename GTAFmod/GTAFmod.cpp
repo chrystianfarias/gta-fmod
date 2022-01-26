@@ -17,14 +17,16 @@
 #include "FMODAudio.h"
 #include "IniReader/IniReader.h"
 #include "INIConfig.h"
+#include "Utils.h"
 
 using namespace plugin;
 
 int m_nLastSpawnedTime;
 FMOD::Studio::System* fmodSystem = NULL;
-FMODAudio* audio;
+FMODAudio* currentAudio;
 std::map<CVehicle*, FMODAudio*> audioInstance;
 std::map<int, FMODAudio*> audios;
+FMODAudio* defaultBank;
 CVehicle* lastVehicle;
 INIConfig* iniConfig;
 
@@ -33,7 +35,6 @@ float fRPM = 800;
 int nGear = 0;
 int nTargetGear = 1;
 float fLastPedal = 0;
-int nLastId = -1;
 float nLastEngineAccel;
 
 RwTexDictionary* m_txd;
@@ -50,6 +51,8 @@ public:
     {
         iniConfig = new INIConfig("config.ini");
         InitializeFmod();
+        InitializeDefaultBank();
+        SearchCustomBanks();
     }
     static void InitializeFmod()
     {
@@ -69,10 +72,10 @@ public:
 
         //Load banks
         FMOD::Studio::Bank* masterBank = NULL;
-        FMODAudio::CheckError(fmodSystem->loadBankFile(PLUGIN_PATH((char*)"banks\\common.bank"), FMOD_STUDIO_LOAD_BANK_NORMAL, &masterBank), "Failed on load bank Master");
+        FMODAudio::CheckError(fmodSystem->loadBankFile(PLUGIN_PATH((char*)"banks\\common.dbank"), FMOD_STUDIO_LOAD_BANK_NORMAL, &masterBank), "Failed on load bank Master");
 
         FMOD::Studio::Bank* stringsBank = NULL;
-        FMODAudio::CheckError(fmodSystem->loadBankFile(PLUGIN_PATH((char*)"banks\\common.strings.bank"), FMOD_STUDIO_LOAD_BANK_NORMAL, &stringsBank), "Failed on load bank Master String");
+        FMODAudio::CheckError(fmodSystem->loadBankFile(PLUGIN_PATH((char*)"banks\\common.strings.dbank"), FMOD_STUDIO_LOAD_BANK_NORMAL, &stringsBank), "Failed on load bank Master String");
 
         //Projects using FMOD Studio must include an in-app credit line and the FMOD logo.
         if (iniConfig->m_bUseLogo)
@@ -98,16 +101,16 @@ public:
             };
         }
     }
-    static void SetIndexFMODBank(int id, char* bank, char* absolutePath)
+    static void SetIndexFMODBank(int id, char* absolutePath)
     {
         StopCurrentAudio();
 
         FMODAudio* audio = new FMODAudio();
-        audio->LoadBank(fmodSystem, iniConfig, bank, absolutePath);
+        audio->LoadBank(fmodSystem, absolutePath);
 
         audios.insert(std::make_pair(id, audio));
     }
-    static void SetVehicleFMODBank(CVehicle* vehicle, char* bank, char* absolutePath)
+    static void SetVehicleFMODBank(CVehicle* vehicle, char* absolutePath)
     {
         if (vehicle == NULL)
             return;
@@ -119,32 +122,18 @@ public:
             audioInstance.insert(std::make_pair(vehicle, audio));
         }
         FMODAudio* audio = new FMODAudio();
-        audio->LoadBank(fmodSystem, iniConfig, bank, absolutePath);
+        audio->LoadBank(fmodSystem, absolutePath);
 
         audioInstance[vehicle] = audio;
     }
     static void StopCurrentAudio()
     {
-        if (lastVehicle != NULL)
-        {
-            if (audioInstance[lastVehicle] != NULL)
-            {
-                FMODAudio* audio = audioInstance[lastVehicle];
-                audio->m_RpmEventInstance->stop(FMOD_STUDIO_STOP_IMMEDIATE);
-                audio->m_bIsPlaying = false;
-                FMODAudio::CheckError(fmodSystem->update(), "Update Failed");
-                lastVehicle = NULL;
-            }
-        }
-
         //Stop FMOD when exiting the vehicle
-        if (nLastId != -1)
+        if (currentAudio)
         {
-            FMODAudio* audio = audios[nLastId];
-            audio->m_RpmEventInstance->stop(FMOD_STUDIO_STOP_IMMEDIATE);
-            audio->m_bIsPlaying = false;
+            currentAudio->m_RpmEventInstance->stop(FMOD_STUDIO_STOP_IMMEDIATE);
+            currentAudio->m_bIsPlaying = false;
             FMODAudio::CheckError(fmodSystem->update(), "Update Failed");
-            nLastId = -1;
         }
     }
     static void _stdcall OnExitVehicle()
@@ -162,56 +151,27 @@ public:
         if (lastVehicle)
         {
             //Try with instance
-            audio = audioInstance[lastVehicle];
+            currentAudio = audioInstance[lastVehicle];
             //Try with model index
-            if (audio == NULL)
+            if (currentAudio == NULL)
             {
-                nLastId = lastVehicle->m_nModelIndex;
-                audio = audios[nLastId];
+                currentAudio = audios[lastVehicle->m_nModelIndex];
             }
             //Try with sound bank
-            if (audio == NULL)
+            if (currentAudio == NULL)
             {
-                nLastId = lastVehicle->m_vehicleAudio.m_nEngineAccelerateSoundBankId;
-                audio = audios[nLastId];
+                currentAudio = audios[lastVehicle->m_vehicleAudio.m_nEngineAccelerateSoundBankId];
             }
-            
-            if (audio == NULL)
+            //Set to default
+            if (currentAudio == NULL)
             {
-                nLastId = lastVehicle->m_vehicleAudio.m_nEngineAccelerateSoundBankId;
-                std::string section = "Bank" + std::to_string(nLastId);
-                std::string sectionId = "Id" + std::to_string(lastVehicle->m_nModelIndex);
-                CIniReader ini("banks\\banks.ini");
-                std::string defaultBank = ini.ReadString("EngineBanks", "Default", "");
-                std::string custom = ini.ReadString("CarBanks", sectionId, "");
-                std::string bank = ini.ReadString("EngineBanks", section, defaultBank);
-                std::string path = "banks\\" + bank + ".bank";
-                std::string customPath = "banks\\" + custom + ".bank";
-
-                audio = new FMODAudio();
-                //Load INI
-                if (custom.empty())
-                {
-                    audio->LoadBank(fmodSystem, iniConfig, (char*)bank.c_str(), PLUGIN_PATH((char*)path.c_str()));
-                }
-                else
-                {
-                    audio->LoadBank(fmodSystem, iniConfig, (char*)custom.c_str(), PLUGIN_PATH((char*)customPath.c_str()));
-                    nLastId = lastVehicle->m_nModelIndex;
-                }
-
-                audios.insert(std::make_pair(nLastId, audio));
-                audios[nLastId] = audio;
+                currentAudio = defaultBank;
             }
-            if (audio->m_bIsLoaded == false)
+            if (currentAudio->m_bIsPlaying == false)
             {
-                return;
-            }
-            if (audio->m_bIsPlaying == false)
-            {
-                fRPM = iniConfig->m_fMinRPM;
-                audio->m_RpmEventInstance->start();
-                audio->m_bIsPlaying = true;
+                fRPM = currentAudio->m_Ini->m_fMinRPM;
+                currentAudio->m_RpmEventInstance->start();
+                currentAudio->m_bIsPlaying = true;
             }
         }
     }
@@ -219,14 +179,14 @@ public:
     {
         if (fRPM > 5200 && CTimer::m_snTimeInMilliseconds > (m_nLastSpawnedTime + time))
         {
-            audio->m_BackFireEventInstance->start();
+            currentAudio->m_BackFireEventInstance->start();
             m_nLastSpawnedTime = CTimer::m_snTimeInMilliseconds;
         }
     }
     static void _stdcall ProcessVehicleEngine(cVehicleParams* params)
     {
         
-        if (lastVehicle && !CTimer::m_UserPause && audio)
+        if (lastVehicle && !CTimer::m_UserPause && currentAudio)
         {
             lastVehicle->m_vehicleAudio.m_nEngineState = 5;
             cTransmission* m_pTransmission = &lastVehicle->m_pHandlingData->m_transmissionData;
@@ -236,22 +196,14 @@ public:
             float currentRatio = (velocity - m_pTransmission->m_aGears[nGear].m_fChangeDownVelocity)
                 / (*(float*)&m_pTransmission->m_aGears[nGear].m_fMaxVelocity
                     - m_pTransmission->m_aGears[nGear].m_fChangeDownVelocity);
-            if (currentRatio > 1.0 || currentRatio >= 0.0)
-            {
-                if (currentRatio > 1.0)
-                    currentRatio = 1.0;
-            }
-            else
-            {
-                currentRatio = 0.0;
-            }
+            
             params->m_fVelocityChangingPercentage = currentRatio;
 
             if (!nGear)
                 params->m_fVelocityChangingPercentage = 0.0;
            
             //Calculate target RPM 
-            float targetRpm = iniConfig->m_fMinRPM + ((iniConfig->m_fMaxRPM - 2000 )* params->m_fVelocityChangingPercentage);
+            float targetRpm = currentAudio->m_Ini->m_fMinRPM + ((currentAudio->m_Ini->m_fMaxRPM - 2000 )* params->m_fVelocityChangingPercentage);
 
             //Set 3D space position
             CVector camPos = TheCamera.GetPosition();
@@ -264,35 +216,35 @@ public:
             RwV3dTransformPoint((RwV3d*)&dirFor, (RwV3d*)&offsetFor, (RwMatrix*)matrix);
             RwV3dTransformPoint((RwV3d*)&dirUp, (RwV3d*)&offsetUp, (RwMatrix*)matrix);
 
-            audio->m_Attributes.position.x = vehiclePos.x;
-            audio->m_Attributes.position.y = vehiclePos.y;
-            audio->m_Attributes.position.z = vehiclePos.z;
-            audio->m_Attributes.velocity.x = lastVehicle->m_vecMoveSpeed.x;
-            audio->m_Attributes.velocity.y = lastVehicle->m_vecMoveSpeed.y;
-            audio->m_Attributes.velocity.z = lastVehicle->m_vecMoveSpeed.z;
+            currentAudio->m_Attributes.position.x = vehiclePos.x;
+            currentAudio->m_Attributes.position.y = vehiclePos.y;
+            currentAudio->m_Attributes.position.z = vehiclePos.z;
+            currentAudio->m_Attributes.velocity.x = lastVehicle->m_vecMoveSpeed.x;
+            currentAudio->m_Attributes.velocity.y = lastVehicle->m_vecMoveSpeed.y;
+            currentAudio->m_Attributes.velocity.z = lastVehicle->m_vecMoveSpeed.z;
 
-            audio->m_Attributes.forward.x = dirFor.x - vehiclePos.x;
-            audio->m_Attributes.forward.y = dirFor.y - vehiclePos.y;
-            audio->m_Attributes.forward.z = dirFor.z - vehiclePos.z;
-            audio->m_Attributes.up.x = dirUp.x - vehiclePos.x;
-            audio->m_Attributes.up.y = dirUp.y - vehiclePos.y;
-            audio->m_Attributes.up.z = dirUp.z - vehiclePos.z;
+            currentAudio->m_Attributes.forward.x = dirFor.x - vehiclePos.x;
+            currentAudio->m_Attributes.forward.y = dirFor.y - vehiclePos.y;
+            currentAudio->m_Attributes.forward.z = dirFor.z - vehiclePos.z;
+            currentAudio->m_Attributes.up.x = dirUp.x - vehiclePos.x;
+            currentAudio->m_Attributes.up.y = dirUp.y - vehiclePos.y;
+            currentAudio->m_Attributes.up.z = dirUp.z - vehiclePos.z;
 
             FMOD::ChannelGroup* grp;
-            audio->m_RpmEventInstance->getChannelGroup(&grp);
+            currentAudio->m_RpmEventInstance->getChannelGroup(&grp);
             grp->setReverbProperties(0, CamNoRain() ? 1.0 : 0.0);
 
-            audio->m_RpmEventInstance->set3DAttributes(&audio->m_Attributes);
-            audio->m_BackFireEventInstance->set3DAttributes(&audio->m_Attributes);
-            audio->m_GearEventInstance->set3DAttributes(&audio->m_Attributes);
+            currentAudio->m_RpmEventInstance->set3DAttributes(&currentAudio->m_Attributes);
+            currentAudio->m_BackFireEventInstance->set3DAttributes(&currentAudio->m_Attributes);
+            currentAudio->m_GearEventInstance->set3DAttributes(&currentAudio->m_Attributes);
 
-            audio->m_ListenerAttributes.position.x = camPos.x;
-            audio->m_ListenerAttributes.position.y = camPos.y;
-            audio->m_ListenerAttributes.position.z = camPos.z;
-            audio->m_ListenerAttributes.forward = audio->m_Attributes.forward;
-            audio->m_ListenerAttributes.up = audio->m_Attributes.up;
+            currentAudio->m_ListenerAttributes.position.x = camPos.x;
+            currentAudio->m_ListenerAttributes.position.y = camPos.y;
+            currentAudio->m_ListenerAttributes.position.z = camPos.z;
+            currentAudio->m_ListenerAttributes.forward = currentAudio->m_Attributes.forward;
+            currentAudio->m_ListenerAttributes.up = currentAudio->m_Attributes.up;
 
-            fmodSystem->setListenerAttributes(0, &audio->m_ListenerAttributes);
+            fmodSystem->setListenerAttributes(0, &currentAudio->m_ListenerAttributes);
 
             //Get gas pedal
             float gasPedal = abs(lastVehicle->m_fGasPedal);
@@ -300,21 +252,21 @@ public:
             bool clutch = automobile->m_nWheelsOnGround == 0 || params->m_bHandbrakeOn || lastVehicle->m_fWheelSpinForAudio > 0.6f;
 
             //Gear change time
-            if (CTimer::m_snTimeInMilliseconds < (nLastGearChangeTime + (iniConfig->m_fGearTime * 0.5)))
+            if (CTimer::m_snTimeInMilliseconds < (nLastGearChangeTime + (currentAudio->m_Ini->m_fGearTime * 0.5)))
             {
                 clutch = true;
                 gasPedal = 0;
             }
-            if (CTimer::m_snTimeInMilliseconds >= (nLastGearChangeTime + (iniConfig->m_fGearTime * 0.5)))
+            if (CTimer::m_snTimeInMilliseconds >= (nLastGearChangeTime + (currentAudio->m_Ini->m_fGearTime * 0.5)))
             {
                 if (nGear != nTargetGear)
                 {
                     lastVehicle->m_nVehicleFlags.bAudioChangingGear = true;
-                    audio->m_GearEventInstance->start();
+                    currentAudio->m_GearEventInstance->start();
                 }
                 nGear = nTargetGear;
             }
-            if (CTimer::m_snTimeInMilliseconds >= (nLastGearChangeTime + (iniConfig->m_fGearTime * 0.8)))
+            if (CTimer::m_snTimeInMilliseconds >= (nLastGearChangeTime + (currentAudio->m_Ini->m_fGearTime * 0.8)))
             {
                 lastVehicle->m_nVehicleFlags.bAudioChangingGear = false;
             }
@@ -326,36 +278,36 @@ public:
 
             if (clutch > 0)
             {
-                if (fRPM < iniConfig->m_fMaxRPM)
+                if (fRPM < currentAudio->m_Ini->m_fMaxRPM)
                 {
-                    fRPM += (gasPedal * CTimer::ms_fTimeStep) * (iniConfig->m_fRPMAcceleration * 2) * clutch;
+                    fRPM += (gasPedal * CTimer::ms_fTimeStep) * (currentAudio->m_Ini->m_fRPMAcceleration * 2) * clutch;
                 }
-                if (fRPM > iniConfig->m_fMaxRPM)
+                if (fRPM > currentAudio->m_Ini->m_fMaxRPM)
                 {
-                    fRPM -= (gasPedal * CTimer::ms_fTimeStep) * (iniConfig->m_fRPMDesaceleration * 3) * clutch;
+                    fRPM -= (gasPedal * CTimer::ms_fTimeStep) * (currentAudio->m_Ini->m_fRPMDesaceleration * 3) * clutch;
                 }
-                if (gasPedal == 0 && fRPM > iniConfig->m_fMinRPM)
+                if (gasPedal == 0 && fRPM > currentAudio->m_Ini->m_fMinRPM)
                 {
-                    fRPM -= (CTimer::ms_fTimeStep) * (iniConfig->m_fRPMDesaceleration / 2);
+                    fRPM -= (CTimer::ms_fTimeStep) * (currentAudio->m_Ini->m_fRPMDesaceleration / 2);
                 }
             }
             else
             {
                 if (fRPM < targetRpm)
                 {
-                    fRPM += (CTimer::ms_fTimeStep)*iniConfig->m_fRPMAcceleration;
+                    fRPM += (CTimer::ms_fTimeStep)*currentAudio->m_Ini->m_fRPMAcceleration;
                 }
                 if (fRPM > targetRpm)
                 {
-                    fRPM -= (CTimer::ms_fTimeStep)*iniConfig->m_fRPMDesaceleration;
+                    fRPM -= (CTimer::ms_fTimeStep)*currentAudio->m_Ini->m_fRPMDesaceleration;
                 }
             }
 
             //Set FMOD parameters
-            audio->m_RpmEventInstance->setParameterByID(audio->m_RpmDesc.id, fRPM);
-            audio->m_RpmEventInstance->setParameterByID(audio->m_LoadDesc.id, -1 + (gasPedal * 2));
+            currentAudio->m_RpmEventInstance->setParameterByID(currentAudio->m_RpmDesc.id, fRPM);
+            currentAudio->m_RpmEventInstance->setParameterByID(currentAudio->m_LoadDesc.id, -1 + (gasPedal * 2));
 
-            if (clutch > 0 && fRPM >= iniConfig->m_fMaxRPM)
+            if (clutch > 0 && fRPM >= currentAudio->m_Ini->m_fMaxRPM)
             {
                 Backfire(250);
             }
@@ -370,6 +322,47 @@ public:
             }
             fLastPedal = gasPedal;
         }
+    }
+
+    static void InitializeDefaultBank()
+    {
+        defaultBank = new FMODAudio();
+        defaultBank->LoadBank(fmodSystem, PLUGIN_PATH((char*)iniConfig->m_sDefaultBank.c_str()));
+    }
+
+    static void SearchCustomBanks()
+    {
+        std::ofstream lg;
+        lg.open("banks.log", std::ofstream::app);
+
+        for (std::string& fname : Utils::GetFiles(GAME_PATH((char*)"modloader"), ".bank"))
+        {
+            if (fname == iniConfig->m_sDefaultBank)
+                continue;
+
+            FMODAudio* audio = new FMODAudio();
+
+            audio->LoadBank(fmodSystem, fname.data());
+
+            int id = audio->m_Ini->m_nModelId;
+
+            lg << fname;
+            lg << "\n---\n";
+            lg.flush();
+
+            if (id != -1)
+            {
+                audios.insert(std::make_pair(id, audio));
+                audios[id] = audio;
+            }
+            id = audio->m_Ini->m_nSoundEngineId;
+            if (id != -1)
+            {
+                audios.insert(std::make_pair(id, audio));
+                audios[id] = audio;
+            }
+        }
+        lg.close();
     }
 
     GTAFmod() {
@@ -388,9 +381,9 @@ public:
 
         //Update FMOD on game Process
         Events::gameProcessEvent += []() {
-            if (audio)
+            if (currentAudio)
             {
-                audio->m_RpmEventInstance->setVolume(CTimer::m_UserPause ? 0.0 : iniConfig->m_fVolume);
+                currentAudio->m_RpmEventInstance->setVolume(CTimer::m_UserPause ? 0.0 : iniConfig->m_fMasterVolume);
             }
             //Update FMOD
             FMODAudio::CheckError(fmodSystem->update(), "Update Failed");
@@ -407,15 +400,15 @@ extern "C" int __declspec(dllexport) Ext_GetCurrentGear()
 {
     return nGear;
 }
-extern "C" void __declspec(dllexport) Ext_SetEngineSoundIdFMODBank(int id, char* bank, char* absolutePath)
+extern "C" void __declspec(dllexport) Ext_SetEngineSoundIdFMODBank(int id, char* absolutePath)
 {
-    return GTAFmod::SetIndexFMODBank(id, bank, absolutePath);
+    return GTAFmod::SetIndexFMODBank(id, absolutePath);
 }
-extern "C" void __declspec(dllexport) Ext_SetModelIdFMODBank(int id, char* bank, char* absolutePath)
+extern "C" void __declspec(dllexport) Ext_SetModelIdFMODBank(int id, char* absolutePath)
 {
-    return GTAFmod::SetIndexFMODBank(id, bank, absolutePath);
+    return GTAFmod::SetIndexFMODBank(id, absolutePath);
 }
-extern "C" void __declspec(dllexport) Ext_SetVehicleFMODBank(CVehicle* vehicle, char* bank, char* absolutePath)
+extern "C" void __declspec(dllexport) Ext_SetVehicleFMODBank(CVehicle* vehicle, char* absolutePath)
 {
-    return GTAFmod::SetVehicleFMODBank(vehicle, bank, absolutePath);
+    return GTAFmod::SetVehicleFMODBank(vehicle, absolutePath);
 }

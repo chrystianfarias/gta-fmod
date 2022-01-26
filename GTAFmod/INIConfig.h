@@ -4,25 +4,20 @@
 class INIConfig
 {
 public:
-	//Audio
-	float m_fGearTime;
-	float m_fVolume;
-	float m_fMinRPM;
-	float m_fMaxRPM;
-	float m_fRPMAcceleration;
-	float m_fRPMDesaceleration;
+	//FMOD
 	bool m_bUseLogo;
+	std::string m_sDefaultBank;
+
+	//Audio
+	float m_fMasterVolume;
 
 	INIConfig(std::string iniPath)
 	{
 		CIniReader ini(iniPath);
-		m_fVolume = ini.ReadFloat("Audio", "Volume", 1.0);
-		m_fMinRPM = ini.ReadFloat("Audio", "MinRPM", 800);
-		m_fMaxRPM = ini.ReadFloat("Audio", "MaxRPM", 8500);
-		m_fGearTime = ini.ReadFloat("Audio", "GearTime", 1000);
 		m_bUseLogo = ini.ReadBoolean("FMOD", "UseLogo", true);
-		m_fRPMAcceleration = ini.ReadFloat("Audio", "RPMAcceleration", 50);
-		m_fRPMDesaceleration = ini.ReadFloat("Audio", "RPMDesaceleration", 60);
+		m_sDefaultBank = ini.ReadString("FMOD", "DefaultBank", "");
+
+		m_fMasterVolume = ini.ReadFloat("Audio", "MasterVolume", 1.0);
 	}
 };
 

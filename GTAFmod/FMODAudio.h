@@ -4,6 +4,7 @@
 #include "CTimer.h"
 #include "fmod_errors.h"
 #include "INIConfig.h"
+#include "BankINIConfig.h"
 
 class FMODAudio
 {
@@ -18,8 +19,9 @@ public:
 	FMOD_STUDIO_PARAMETER_DESCRIPTION m_LoadDesc;
     FMOD_3D_ATTRIBUTES m_Attributes;
     FMOD_3D_ATTRIBUTES m_ListenerAttributes;
+    BankINIConfig* m_Ini;
 
-    void LoadBank(FMOD::Studio::System* fmodSystem, INIConfig* ini, char* bank, char* absolutePath);
+    void LoadBank(FMOD::Studio::System* fmodSystem, char* absolutePath);
 
     static void CheckError(FMOD_RESULT result, const char* text)
     {
