@@ -8,9 +8,7 @@ This project uses [plugin-sdk](https://github.com/DK22Pac/plugin-sdk).
 ## Download
   See [releases page](https://github.com/chrystianfarias/gta-fmod/releases).
   
-  Searching for Compatible Banks Kits? Consider [buying the game Assetto Corsa](https://store.steampowered.com/app/244210/Assetto_Corsa/), it contains several cars and with them the SFX.
-  
-  Assetto Corsa banks, remembering that it is entirely authored by **Kunos Simulazioni**: [View banks](https://drive.google.com/drive/folders/1dLTVFNOnWmtb2UHFvGaUFfWf03PHJChm?usp=sharing)
+  Searching for Compatible Banks Kits? Consider [buying the game Assetto Corsa](https://store.steampowered.com/app/244210/Assetto_Corsa/), it contains several cars and with them the SFX. Here are some game banks, remembering that it is entirely authored by **Kunos Simulazioni**: [View banks](https://drive.google.com/drive/folders/1dLTVFNOnWmtb2UHFvGaUFfWf03PHJChm?usp=sharing)
   
 ## Develop
   See [wiki page](https://github.com/chrystianfarias/gta-fmod/wiki).
