@@ -332,9 +332,6 @@ public:
 
     static void SearchCustomBanks()
     {
-        std::ofstream lg;
-        lg.open("banks.log", std::ofstream::app);
-
         for (std::string& fname : Utils::GetFiles(GAME_PATH((char*)"modloader"), ".bank"))
         {
             if (fname == iniConfig->m_sDefaultBank)
@@ -345,10 +342,6 @@ public:
             audio->LoadBank(fmodSystem, fname.data());
 
             int id = audio->m_Ini->m_nModelId;
-
-            lg << fname;
-            lg << "\n---\n";
-            lg.flush();
 
             if (id != -1)
             {
@@ -362,7 +355,6 @@ public:
                 audios[id] = audio;
             }
         }
-        lg.close();
     }
 
     GTAFmod() {

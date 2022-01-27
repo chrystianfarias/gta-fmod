@@ -4,6 +4,7 @@
 #include <string>
 #include <filesystem>
 #include <game_sa/CHud.h>
+#include "Utils.h"
 
 using std::string;
 namespace fs = std::filesystem;
@@ -16,7 +17,6 @@ void FMODAudio::LoadBank(FMOD::Studio::System* fmodSystem, char* absolutePath)
     string dir = bankPath.parent_path().string();
     string modelName = bankPath.stem().string();
     string iniPath = dir + "\\" + modelName + ".ini";
-    int maxIndex = injector::ReadMemory<uint32_t>(0x4088FB + 2, true);
 
     m_Ini = new BankINIConfig(iniPath);
 
@@ -26,10 +26,12 @@ void FMODAudio::LoadBank(FMOD::Studio::System* fmodSystem, char* absolutePath)
         CheckError(FMOD_ERR_FILE_NOTFOUND, bnk.data());
         return;
     }
-    CBaseModelInfo* modelInfo = CModelInfo::GetModelInfo(modelName.data(), 0, maxIndex-1);
-    if (modelInfo)
+
+    int modelIndex;
+    CBaseModelInfo* vehinfo = CModelInfo::GetModelInfo(modelName.data(), &modelIndex);
+    if (vehinfo)
     {
-        m_Ini->m_nModelId = modelInfo->m_nObjectInfoIndex;
+        m_Ini->m_nModelId = modelIndex;
     }
 
     FMOD::Studio::Bank* vehiclesBank = NULL;
