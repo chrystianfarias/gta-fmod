@@ -53,7 +53,7 @@ public:
         InitializeFmod();
         InitializeDefaultBank();
         SearchCustomBanks();
-    }
+    } 
     static void InitializeFmod()
     {
         void* extraDriverData = NULL;
@@ -62,20 +62,12 @@ public:
         //Initialize Core System
         FMOD::System* coreSystem = NULL;
         FMODAudio::CheckError(fmodSystem->getCoreSystem(&coreSystem), "Failed on create FMOD CORE System");
-        FMODAudio::CheckError(coreSystem->setSoftwareFormat(0, FMOD_SPEAKERMODE_DEFAULT, 0), "Failed on set software format");
         FMODAudio::CheckError(coreSystem->loadPlugin(PLUGIN_PATH((char*)"plugins\\fmod_distance_filter.dll"), 0, 0), "Failed on load plugin 'plugins\\fmod_distance_filter.dll'");
         
         FMODAudio::CheckError(fmodSystem->initialize(1024, FMOD_STUDIO_INIT_NORMAL, FMOD_INIT_NORMAL, extraDriverData), "Failed to initialize");
 
         FMOD_REVERB_PROPERTIES props = FMOD_PRESET_HANGAR;
         FMODAudio::CheckError(coreSystem->setReverbProperties(0, &props), "Failed on set reverb");
-
-        //Load banks
-        FMOD::Studio::Bank* masterBank = NULL;
-        FMODAudio::CheckError(fmodSystem->loadBankFile(PLUGIN_PATH((char*)"banks\\common.dbank"), FMOD_STUDIO_LOAD_BANK_NORMAL, &masterBank), "Failed on load bank Master");
-
-        FMOD::Studio::Bank* stringsBank = NULL;
-        FMODAudio::CheckError(fmodSystem->loadBankFile(PLUGIN_PATH((char*)"banks\\common.strings.dbank"), FMOD_STUDIO_LOAD_BANK_NORMAL, &stringsBank), "Failed on load bank Master String");
 
         //Projects using FMOD Studio must include an in-app credit line and the FMOD logo.
         if (iniConfig->m_bUseLogo)

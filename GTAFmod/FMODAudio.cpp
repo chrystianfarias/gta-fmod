@@ -39,26 +39,32 @@ void FMODAudio::LoadBank(FMOD::Studio::System* fmodSystem, char* absolutePath)
 
     //Load events
     FMOD::Studio::EventDescription* rpmEventDescription = NULL;
-    CheckError(fmodSystem->getEvent(m_Ini->m_sEngineExtEvent.c_str(), &rpmEventDescription), "Failed on get event");
+    FMOD::Studio::ID guidRpmEvent = { 0 };
+    CheckError(FMOD::Studio::parseID(m_Ini->m_sEngineExtEvent.c_str(), &guidRpmEvent), m_Ini->m_sEngineExtEvent.c_str());
+    CheckError(fmodSystem->getEventByID(&guidRpmEvent, &rpmEventDescription), "Failed on get rpm event");
 
     FMOD::Studio::EventDescription* backFireEventDescription = NULL;
-    CheckError(fmodSystem->getEvent(m_Ini->m_sBackfireExtEvent.c_str(), &backFireEventDescription), "Failed on get event");
+    FMOD::Studio::ID guidBackFireEvent = { 0 };
+    CheckError(FMOD::Studio::parseID(m_Ini->m_sBackfireExtEvent.c_str(), &guidBackFireEvent), m_Ini->m_sBackfireExtEvent.c_str());
+    CheckError(fmodSystem->getEventByID(&guidBackFireEvent, &backFireEventDescription), "Failed on get backfire event");
 
     FMOD::Studio::EventDescription* gearEventDescription = NULL;
-    CheckError(fmodSystem->getEvent(m_Ini->m_sGearExtEvent.c_str(), &gearEventDescription), "Failed on get event");
+    FMOD::Studio::ID guidGearEvent = { 0 };
+    CheckError(FMOD::Studio::parseID(m_Ini->m_sBackfireExtEvent.c_str(), &guidGearEvent), m_Ini->m_sBackfireExtEvent.c_str());
+    CheckError(fmodSystem->getEventByID(&guidGearEvent, &gearEventDescription), "Failed on get gear event");
 
     //RPM Instance
-    CheckError(rpmEventDescription->createInstance(&m_RpmEventInstance), "Failed on create instance");
+    CheckError(rpmEventDescription->createInstance(&m_RpmEventInstance), "Failed on create rpm instance");
 
     //Backfire Instance
-    CheckError(backFireEventDescription->createInstance(&m_BackFireEventInstance), "Failed on create instance");
+    CheckError(backFireEventDescription->createInstance(&m_BackFireEventInstance), "Failed on create backfire instance");
 
     //Gear Change Instance
-    CheckError(gearEventDescription->createInstance(&m_GearEventInstance), "Failed on create instance");
+    CheckError(gearEventDescription->createInstance(&m_GearEventInstance), "Failed on create gear instance");
 
     //Get parameters
-    CheckError(rpmEventDescription->getParameterDescriptionByName(m_Ini->m_sRPMParameter.c_str(), &m_RpmDesc), "Failed on get parameter");
-    CheckError(rpmEventDescription->getParameterDescriptionByName(m_Ini->m_sThrottleParameter.c_str(), &m_LoadDesc), "Failed on get parameter");
+    CheckError(rpmEventDescription->getParameterDescriptionByName(m_Ini->m_sRPMParameter.c_str(), &m_RpmDesc), "Failed on get rpms parameter");
+    CheckError(rpmEventDescription->getParameterDescriptionByName(m_Ini->m_sThrottleParameter.c_str(), &m_LoadDesc), "Failed on get toggle parameter");
 
     //Set 3D space
     m_RpmEventInstance->setReverbLevel(0, 2);
