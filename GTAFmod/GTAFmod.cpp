@@ -9,6 +9,7 @@
 #include "Curve.h"
 #include "CModelInfo.h"
 #include "CFileLoader.h"
+#include "CMenuManager.h"
 
 #include <stdio.h>
 #include <string>
@@ -86,18 +87,23 @@ public:
 
             Events::drawMenuBackgroundEvent += [] {
 
-                // Setup texture
-                RwRenderStateSet(rwRENDERSTATETEXTURERASTER, m_logoTex->raster);
+                if (FrontEndMenuManager.m_nCurrentMenuPage == eMenuPage::MENUPAGE_AUDIO_SETTINGS)
+                {
+                    // Setup texture
+                    RwRenderStateSet(rwRENDERSTATETEXTURERASTER, m_logoTex->raster);
 
-                // Background
-                CRGBA color = CRGBA(255, 255, 255, 255);
+                    // Background
+                    CRGBA color = CRGBA(255, 255, 255, 255);
 
-                CSprite2d::SetVertices(CRect(SCREEN_COORD_LEFT(50.0f),
-                    SCREEN_COORD_BOTTOM(30.0f + 100.0f), SCREEN_COORD_LEFT(50.0f + 200.0f), SCREEN_COORD_BOTTOM(30.0f)), color, color, color, color);
-                RwIm2DRenderPrimitive(rwPRIMTYPETRIFAN, CSprite2d::maVertices, 4);
+                    CSprite2d::SetVertices(CRect(SCREEN_COORD_LEFT(50.0f),
+                                           SCREEN_COORD_BOTTOM(30.0f + 100.0f), SCREEN_COORD_LEFT(30.0f + 200.0f), SCREEN_COORD_BOTTOM(60.0f)), color, color, color, color);
+                    RwIm2DRenderPrimitive(rwPRIMTYPETRIFAN, CSprite2d::maVertices, 4);
 
-                // Reset texture
-                RwRenderStateSet(rwRENDERSTATETEXTURERASTER, 0);
+                    // Reset texture
+                    RwRenderStateSet(rwRENDERSTATETEXTURERASTER, 0);
+                }
+
+                MuteAllAudios();
             };
         }
     }
@@ -136,6 +142,16 @@ public:
             FMODAudio::CheckError(fmodSystem->update(), "Update Failed");
         }
     }
+    static void MuteAllAudios()
+    {
+        if (currentAudio)
+        {
+            currentAudio->m_RpmEventInstance->setVolume(0.0);
+            currentAudio->m_GearEventInstance->setVolume(0.0);
+            currentAudio->m_BackFireEventInstance->setVolume(0.0);
+        }
+        FMODAudio::CheckError(fmodSystem->update(), "Update Failed");
+    }
     static void _stdcall OnExitVehicle()
     {
         CVehicle* veh = FindPlayerVehicle(-1, true);
@@ -150,6 +166,14 @@ public:
 
         if (lastVehicle)
         {
+            eVehicleApperance vehicleClass = (eVehicleApperance)lastVehicle->GetVehicleAppearance();
+            if (vehicleClass == eVehicleApperance::VEHICLE_APPEARANCE_BIKE && !iniConfig->m_bEnableOnMotorbikes ||
+                vehicleClass == eVehicleApperance::VEHICLE_APPEARANCE_AUTOMOBILE && !iniConfig->m_bEnableOnCars ||
+                lastVehicle->m_nVehicleFlags.bIsBig && !iniConfig->m_bEnableOnBigVehicles) {
+                lastVehicle = nullptr;
+                return;
+            }
+
             //Try with instance
             currentAudio = audioInstance[lastVehicle];
             //Try with model index
@@ -165,13 +189,18 @@ public:
             //Set to default
             if (currentAudio == NULL)
             {
-                currentAudio = defaultBank;
+                if (defaultBank->m_bIsLoaded)
+                {
+                    currentAudio = defaultBank;
+                }
             }
-            if (currentAudio->m_bIsPlaying == false)
-            {
-                fRPM = currentAudio->m_Ini->m_fMinRPM;
-                currentAudio->m_RpmEventInstance->start();
-                currentAudio->m_bIsPlaying = true;
+            if (currentAudio) {
+                if (currentAudio->m_bIsPlaying == false)
+                {
+                    fRPM = currentAudio->m_Ini->m_fMinRPM;
+                    currentAudio->m_RpmEventInstance->start();
+                    currentAudio->m_bIsPlaying = true;
+                }
             }
         }
     }
@@ -185,6 +214,12 @@ public:
     }
     static void _stdcall ProcessVehicleEngine(cVehicleParams* params)
     {
+        if (!lastVehicle || currentAudio == NULL) {
+            if (params->m_pVehicle) {
+                CallMethod<0x4FBB10, CAEVehicleAudioEntity*, cVehicleParams*>(&params->m_pVehicle->m_vehicleAudio, params);
+            }
+            return;
+        }
         
         if (lastVehicle && !CTimer::m_UserPause && currentAudio)
         {
@@ -193,9 +228,11 @@ public:
             float velocity = fabs(params->m_fVelocity);
             params->m_nCurrentGear = lastVehicle->m_nCurrentGear;
             params->m_bHandbrakeOn = lastVehicle->m_nVehicleFlags.bIsHandbrakeOn;
-            float currentRatio = (velocity - m_pTransmission->m_aGears[nGear].m_fChangeDownVelocity)
+
+            /*float currentRatio = (velocity - m_pTransmission->m_aGears[nGear].m_fChangeDownVelocity)
                 / (*(float*)&m_pTransmission->m_aGears[nGear].m_fMaxVelocity
-                    - m_pTransmission->m_aGears[nGear].m_fChangeDownVelocity);
+                    - m_pTransmission->m_aGears[nGear].m_fChangeDownVelocity);*/
+            float currentRatio = velocity / m_pTransmission->m_aGears[nGear].m_fMaxVelocity;
             
             params->m_fVelocityChangingPercentage = currentRatio;
 
@@ -203,18 +240,31 @@ public:
                 params->m_fVelocityChangingPercentage = 0.0;
            
             //Calculate target RPM 
-            float targetRpm = currentAudio->m_Ini->m_fMinRPM + ((currentAudio->m_Ini->m_fMaxRPM - 2000 )* params->m_fVelocityChangingPercentage);
+            float maxRPM = currentAudio->m_Ini->m_fMaxRPM;
+            if (iniConfig->m_iRPMmode == 1)
+            {
+                maxRPM -= 2000;
+            }
+            float targetRpm = maxRPM * params->m_fVelocityChangingPercentage;
+            targetRpm = max(currentAudio->m_Ini->m_fMinRPM, targetRpm);
 
             //Set 3D space position
             CVector camPos = TheCamera.GetPosition();
             CVector vehiclePos = lastVehicle->GetPosition();
             CVector dirFor;
             CVector dirUp;
+            CVector camDirFor;
+            CVector camDirUp;
             CVector offsetFor = CVector(0, -1, 0);
             CVector offsetUp = CVector(0, 0, 1);
-            CMatrix* matrix = lastVehicle->m_matrix;
+
+            CMatrix* matrix = lastVehicle->GetMatrix();
             RwV3dTransformPoint((RwV3d*)&dirFor, (RwV3d*)&offsetFor, (RwMatrix*)matrix);
             RwV3dTransformPoint((RwV3d*)&dirUp, (RwV3d*)&offsetUp, (RwMatrix*)matrix);
+
+            CMatrix* camMatrix = TheCamera.GetMatrix();
+            RwV3dTransformPoint((RwV3d*)&camDirFor, (RwV3d*)&offsetFor, (RwMatrix*)camMatrix);
+            RwV3dTransformPoint((RwV3d*)&camDirUp, (RwV3d*)&offsetUp, (RwMatrix*)camMatrix);
 
             currentAudio->m_Attributes.position.x = vehiclePos.x;
             currentAudio->m_Attributes.position.y = vehiclePos.y;
@@ -241,15 +291,20 @@ public:
             currentAudio->m_ListenerAttributes.position.x = camPos.x;
             currentAudio->m_ListenerAttributes.position.y = camPos.y;
             currentAudio->m_ListenerAttributes.position.z = camPos.z;
-            currentAudio->m_ListenerAttributes.forward = currentAudio->m_Attributes.forward;
-            currentAudio->m_ListenerAttributes.up = currentAudio->m_Attributes.up;
+
+            currentAudio->m_ListenerAttributes.forward.x = camDirFor.x - camPos.x;
+            currentAudio->m_ListenerAttributes.forward.y = camDirFor.y - camPos.y;
+            currentAudio->m_ListenerAttributes.forward.z = camDirFor.z - camPos.z;
+            currentAudio->m_ListenerAttributes.up.x = camDirUp.x - camPos.x;
+            currentAudio->m_ListenerAttributes.up.y = camDirUp.y - camPos.y;
+            currentAudio->m_ListenerAttributes.up.z = camDirUp.z - camPos.z;
 
             fmodSystem->setListenerAttributes(0, &currentAudio->m_ListenerAttributes);
 
             //Get gas pedal
             float gasPedal = abs(lastVehicle->m_fGasPedal);
             CAutomobile* automobile = reinterpret_cast<CAutomobile*>(lastVehicle);
-            bool clutch = automobile->m_nWheelsOnGround == 0 || params->m_bHandbrakeOn || lastVehicle->m_fWheelSpinForAudio > 0.6f;
+            bool clutch = automobile->m_nWheelsOnGround <= 1 || params->m_bHandbrakeOn || lastVehicle->m_fWheelSpinForAudio > 0.6f;
 
             //Gear change time
             if (CTimer::m_snTimeInMilliseconds < (nLastGearChangeTime + (currentAudio->m_Ini->m_fGearTime * 0.5)))
@@ -372,13 +427,20 @@ public:
         Events::initGameEvent.after.Add(LoadConfigs);
 
         //Update FMOD on game Process
-        Events::gameProcessEvent += []() {
+        Events::processScriptsEvent += []() {
             if (currentAudio)
             {
-                currentAudio->m_RpmEventInstance->setVolume(CTimer::m_UserPause ? 0.0 : iniConfig->m_fMasterVolume);
+                float volume = iniConfig->m_fMasterVolume * *(float*)0xB5FCCC * 1.7f;
+                currentAudio->m_RpmEventInstance->setVolume(volume);
+                currentAudio->m_GearEventInstance->setVolume(volume);
+                currentAudio->m_BackFireEventInstance->setVolume(volume);
             }
             //Update FMOD
             FMODAudio::CheckError(fmodSystem->update(), "Update Failed");
+        };
+
+        Events::onPauseAllSounds += []() {
+            MuteAllAudios();
         };
     }
 } gTAFmod;
